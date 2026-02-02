@@ -1,0 +1,31 @@
+# FastAPI y servidor
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+
+# Base de datos
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+redis==5.0.1
+
+# Procesamiento de datos
+numpy==1.24.3
+pandas==2.1.3
+scipy==1.11.3
+
+# Utilidades
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+
+# Testing y desarrollo
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1
+
+# Monitoreo
+prometheus-client==0.19.0
+
+# Logging
+structlog==23.2.0

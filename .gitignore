@@ -1,0 +1,447 @@
+# ============================================
+# SISTEMA DE MONITOREO EN TIEMPO REAL
+# ============================================
+
+# Entornos Virtuales Python
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Entornos conda
+.miniconda/
+.conda/
+conda/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Cython debug symbols
+cython_debug/
+
+# Editor de código
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.settings/
+.classpath
+*.code-workspace
+
+# Documentación
+docs/_build/
+docs/source/_build/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Redis
+dump.rdb
+
+# Logs y archivos temporales
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+logs/
+log/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.coverage
+*.coverage
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Configuración de Python
+.python-version
+
+# Entorno virtual de pipenv
+Pipfile.lock
+
+# Archivos de poetry
+poetry.lock
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile
+
+# PEP 582; usado por el paquete de python __pypackages__/
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Paquetes de Bower
+bower_components/
+
+# Paquetes de distribución/bundler
+vendor/
+.bundle/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IDE - JetBrains
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# IDE - Eclipse
+.project
+.classpath
+.settings/
+
+# IDE - NetBeans
+nbproject/
+nb-configuration.xml
+
+# Docker
+**/docker-data/
+**/.dockerignore
+docker-compose.override.yml
+
+# Configuraciones específicas del proyecto
+config/development.yaml
+config/production.yaml
+config/testing.yaml
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de backup
+*.bak
+*.backup
+*.old
+*.orig
+*~
+
+# Archivos de sistema
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Archivos de Office temporales
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# Archivos multimedia
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+
+# Archivos comprimidos
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+# Archivos de datos grandes
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# Archivos de machine learning
+*.pkl
+*.pickle
+*.joblib
+*.model
+
+# Frontend - Build
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/out/
+
+# Frontend - Dependencias
+frontend/node_modules/
+frontend/.npm/
+frontend/.cache/
+
+# Frontend - Parcel
+frontend/.parcel-cache/
+
+# Frontend - Angular
+frontend/.angular/
+
+# Frontend - React
+frontend/.react/
+
+# Frontend - Vue
+frontend/.vue/
+
+# Certificados SSL
+*.pem
+*.key
+*.crt
+*.csr
+
+# SSH
+*.pem
+id_rsa
+id_dsa
+
+# Kubernetes
+*.tfstate
+*.tfstate.*
+
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+
+# Ansible
+*.retry
+
+# Vagrant
+.vagrant/
+
+# Packer
+packer_cache/
+
+# Diagramas
+*.drawio
+*.drawio.png
+*.drawio.svg
+
+# Archivos de exportación
+export/
+exports/
+backup/
+
+# Archivos de profiling
+*.prof
+*.line_profiler
+
+# Archivos de memoria
+*.mem
+*.heap
+
+# Archivos de benchmark
+*.bench
+*.benchmark
+
+# Archivos de experimentos
+experiments/
+runs/
+wandb/
+
+# Archivos de entrenamiento
+checkpoints/
+models/
+weights/
+*.pt
+*.pth
+
+# Archivos de dataset
+datasets/
+*.csv
+*.json
+*.parquet
+*.feather
+
+# Archivos de logs personalizados
+app.log
+error.log
+access.log
+debug.log
+
+# Archivos de configuración personalizados
+myconfig.ini
+local_settings.py
+custom_settings.py
+
+# Archivos generados automáticamente
+generated/
+auto_generated/
+*.generated.*
+
+# Archivos temporales de procesos
+/tmp/
+/temp/
+*.tmp
+*.temp
+
+# Archivos de caché de preprocesamiento
+.cache/
+.preprocessed/
+
+# Archivos de índices de búsqueda
+*.index
+*.idx
+
+# Archivos de sesión
+*.session
+*.session.*
+
+# Archivos de bloqueo
+*.lock
+*.lock.*
+
+# ============================================
+# EXCEPCIONES ESPECÍFICAS DEL PROYECTO
+# ============================================
+
+# Mantener estos archivos
+!config/development.yaml.example
+!config/production.yaml.example
+!config/testing.yaml.example
+!.env.example
+
+# Mantener estructura de directorios vacíos
+!.gitkeep
+
+# Mantener documentación
+!docs/README.md
+!docs/architecture.md
+!docs/api.md
+
+# Mantener ejemplos
+!examples/
+!examples/**/*.py
+!examples/**/*.ipynb
+
+# Mantener assets por defecto
+!frontend/assets/
+!frontend/assets/icons/default/
+!frontend/assets/fonts/default/
+
+# ============================================
+# NOTAS PARA DESARROLLADORES
+# ============================================
+# 
+# 1. Para ignorar archivos específicos temporalmente:
+#    git update-index --assume-unchanged [archivo]
+#    
+# 2. Para ver archivos ignorados:
+#    git status --ignored
+#    
+# 3. Para forzar agregar un archivo ignorado:
+#    git add -f [archivo]
+#    
+# 4. Archivos que SI deben estar en el repositorio:
+#    - Código fuente
+#    - Documentación
+#    - Configuraciones de ejemplo
+#    - Scripts de utilidad
+#    - Licencias
+#    - READMEs
+#
+# 5. Archivos que NO deben estar en el repositorio:
+#    - Credenciales/secretos
+#    - Archivos de entorno (.env)
+#    - Archivos de base de datos
+#    - Binarios grandes
+#    - Archivos de log
+#    - Archivos de sistema
+#
+# ============================================
