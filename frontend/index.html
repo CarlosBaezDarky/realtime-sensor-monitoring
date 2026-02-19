@@ -3,185 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Monitoreo en Tiempo Real</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Monitoreo con SEMÁFOROS | Alertas en Tiempo Real</title>
+    
+    <!-- Librerías externas -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    
+    <!-- CSS local -->
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="dashboard-container">
+    <div class="container">
         <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-left">
-                <h1><i class="fas fa-chart-line"></i> Dashboard de Monitoreo en Tiempo Real</h1>
-                <p class="subtitle">Sistema de seguimiento de sensores ambientales</p>
-            </div>
-            <div class="header-right">
-                <div class="connection-status" id="connectionStatus">
-                    <span class="status-dot" id="statusDot"></span>
-                    <span class="status-text" id="statusText">Conectando...</span>
+        <header>
+            <h1>
+                <span>🚦</span> 
+                Sistema de Monitoreo con SEMÁFOROS
+            </h1>
+            <p class="subtitle">Control de concurrencia en tiempo real con lectores-escritores y colas sincronizadas</p>
+            
+            <div class="status-bar">
+                <div class="status-item">
+                    <div id="statusLed" class="status-led disconnected"></div>
+                    <span id="statusText">Desconectado</span>
                 </div>
-                <div class="system-time" id="systemTime">
-                    <i class="far fa-clock"></i> <span id="timeDisplay">--:--:--</span>
+                
+                <div class="status-item">
+                    <span>📊 Última actualización:</span>
+                    <span id="lastUpdate">--:--:--</span>
+                </div>
+                
+                <div class="status-item">
+                    <span>⚠️ Alertas activas:</span>
+                    <span id="activeAlertsCount">0</span>
+                </div>
+                
+                <div class="status-item">
+                    <span>📡 Conexiones:</span>
+                    <span id="connectionsCount">0</span>
                 </div>
             </div>
         </header>
-
-        <!-- Main Content -->
-        <main class="dashboard-content">
-            <!-- Left Panel: Sensors and Stats -->
-            <div class="left-panel">
-                <!-- Sensor Cards Section -->
-                <div class="panel sensor-panel">
-                    <div class="panel-header">
-                        <h2><i class="fas fa-microchip"></i> Sensores Activos</h2>
-                        <div class="panel-controls">
-                            <button id="toggleUpdateBtn" class="btn-control">
-                                <i class="fas fa-pause"></i> Pausar
-                            </button>
-                        </div>
+        
+        <!-- 🚦 SECCIÓN DE SEMÁFOROS -->
+        <div class="semaphore-section">
+            <div class="semaphore-header">
+                <div class="semaphore-title">
+                    <span>🚦</span>
+                    <span>Estado de Semáforos por Sensor</span>
+                </div>
+                <button class="chart-btn" onclick="SemaphoreManager.refresh()">
+                    🔄 Actualizar
+                </button>
+            </div>
+            
+            <div class="semaphore-grid" id="semaphoreGrid">
+                <div class="semaphore-card">
+                    <div class="semaphore-sensor">
+                        <span>⏳</span> Cargando semáforos...
                     </div>
-                    
-                    <div class="sensor-grid" id="sensorGrid">
-                        <!-- Sensor cards will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dashboard de Sensores -->
+        <div class="dashboard">
+            <!-- Temperatura -->
+            <div class="sensor-card" id="tempCard">
+                <div class="sensor-header">
+                    <div class="sensor-icon temp-icon">🌡️</div>
+                    <div>
+                        <div class="sensor-title">Temperatura</div>
+                        <div id="tempLocation" style="font-size: 0.8rem; color: var(--text-tertiary);">Sensor principal</div>
                     </div>
-                    
-                    <!-- System Statistics -->
-                    <div class="panel-header stats-header">
-                        <h3><i class="fas fa-chart-bar"></i> Estadísticas del Sistema</h3>
+                </div>
+                <div class="sensor-value" id="tempValue">--<span class="sensor-unit">°C</span></div>
+                <div class="sensor-trend" id="tempTrend">
+                    <span>📈 Estable</span>
+                </div>
+                <div class="sensor-time" id="tempTime">Última actualización: --</div>
+                <div class="alert-badge-sensor" id="tempAlertBadge" style="display: none;"></div>
+            </div>
+            
+            <!-- Humedad -->
+            <div class="sensor-card" id="humCard">
+                <div class="sensor-header">
+                    <div class="sensor-icon humidity-icon">💧</div>
+                    <div>
+                        <div class="sensor-title">Humedad</div>
+                        <div id="humLocation" style="font-size: 0.8rem; color: var(--text-tertiary);">Sensor principal</div>
                     </div>
-                    <div class="stats-grid" id="statsGrid">
-                        <div class="stat-item">
-                            <div class="stat-icon"><i class="fas fa-thermometer-half"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="totalSensors">2</div>
-                                <div class="stat-label">Sensores</div>
-                            </div>
+                </div>
+                <div class="sensor-value" id="humidityValue">--<span class="sensor-unit">%</span></div>
+                <div class="sensor-trend" id="humTrend">
+                    <span>📈 Estable</span>
+                </div>
+                <div class="sensor-time" id="humidityTime">Última actualización: --</div>
+                <div class="alert-badge-sensor" id="humAlertBadge" style="display: none;"></div>
+            </div>
+            
+            <!-- Presión -->
+            <div class="sensor-card" id="presCard">
+                <div class="sensor-header">
+                    <div class="sensor-icon pressure-icon">🌀</div>
+                    <div>
+                        <div class="sensor-title">Presión</div>
+                        <div id="presLocation" style="font-size: 0.8rem; color: var(--text-tertiary);">Sensor principal</div>
+                    </div>
+                </div>
+                <div class="sensor-value" id="pressureValue">--<span class="sensor-unit">hPa</span></div>
+                <div class="sensor-trend" id="presTrend">
+                    <span>📈 Estable</span>
+                </div>
+                <div class="sensor-time" id="pressureTime">Última actualización: --</div>
+                <div class="alert-badge-sensor" id="presAlertBadge" style="display: none;"></div>
+            </div>
+            
+            <!-- CO2 -->
+            <div class="sensor-card" id="co2Card">
+                <div class="sensor-header">
+                    <div class="sensor-icon co2-icon">🏭</div>
+                    <div>
+                        <div class="sensor-title">CO₂</div>
+                        <div id="co2Location" style="font-size: 0.8rem; color: var(--text-tertiary);">Sensor principal</div>
+                    </div>
+                </div>
+                <div class="sensor-value" id="co2Value">--<span class="sensor-unit">ppm</span></div>
+                <div class="sensor-trend" id="co2Trend">
+                    <span>📈 Estable</span>
+                </div>
+                <div class="sensor-time" id="co2Time">Última actualización: --</div>
+                <div class="alert-badge-sensor" id="co2AlertBadge" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- Gráfico -->
+        <div class="chart-container">
+            <div class="chart-header">
+                <div class="chart-title">
+                    <span>📈</span> Historial de Temperatura
+                </div>
+                <div class="chart-controls">
+                    <button class="chart-btn active" onclick="window.setChartPeriod('1min')">1 min</button>
+                    <button class="chart-btn" onclick="window.setChartPeriod('5min')">5 min</button>
+                    <button class="chart-btn" onclick="window.setChartPeriod('15min')">15 min</button>
+                    <button class="chart-btn" onclick="window.setChartPeriod('1hour')">1 hora</button>
+                </div>
+            </div>
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        
+        <!-- SECCIÓN DE ALERTAS -->
+        <div class="alerts-section">
+            <div class="alerts-header">
+                <div class="alerts-title">
+                    <span>⚠️</span>
+                    <span>Centro de Alertas</span>
+                    <span class="alerts-badge" id="alertsBadge">
+                        <span id="criticalCount">0</span> críticas
+                    </span>
+                </div>
+                
+                <div class="alerts-filters">
+                    <button class="alert-filter-btn active" onclick="window.filterAlerts('all')">Todas</button>
+                    <button class="alert-filter-btn" onclick="window.filterAlerts('critical')">Críticas</button>
+                    <button class="alert-filter-btn" onclick="window.filterAlerts('high')">Altas</button>
+                    <button class="alert-filter-btn" onclick="window.filterAlerts('medium')">Medias</button>
+                    <button class="alert-filter-btn" onclick="window.filterAlerts('low')">Bajas</button>
+                    <button class="alert-filter-btn" onclick="window.clearAllAlerts()">🗑️ Limpiar</button>
+                </div>
+            </div>
+            
+            <!-- Estadísticas de alertas -->
+            <div class="alerts-stats">
+                <div class="stat-card">
+                    <div class="stat-value stat-critical" id="statCritical">0</div>
+                    <div class="stat-label">Críticas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-high" id="statHigh">0</div>
+                    <div class="stat-label">Altas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-medium" id="statMedium">0</div>
+                    <div class="stat-label">Medias</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value stat-low" id="statLow">0</div>
+                    <div class="stat-label">Bajas</div>
+                </div>
+            </div>
+            
+            <!-- Lista de alertas -->
+            <div class="alerts-list" id="alertsList">
+                <div class="alert-item alert-low">
+                    <div class="alert-header">
+                        <div class="alert-title">
+                            <div class="alert-icon">ℹ️</div>
+                            Sistema iniciado
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="activeAlerts">0</div>
-                                <div class="stat-label">Alertas</div>
-                            </div>
+                        <div class="alert-time">Justo ahora</div>
+                    </div>
+                    <div class="alert-message">
+                        El sistema de monitoreo con semáforos está funcionando correctamente
+                    </div>
+                    <div class="alert-footer">
+                        <div class="alert-sensor">
+                            <span>🔌</span> Sistema
                         </div>
-                        <div class="stat-item">
-                            <div class="stat-icon"><i class="fas fa-tachometer-alt"></i></div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="updateRate">1.0</div>
-                                <div class="stat-label">Hz</div>
-                            </div>
+                        <div class="alert-actions">
+                            <button class="alert-btn" onclick="window.acknowledgeAlert(this)">✓ Reconocer</button>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- Right Panel: Charts and Alerts -->
-            <div class="right-panel">
-                <!-- Real-time Chart -->
-                <div class="panel chart-panel">
-                    <div class="panel-header">
-                        <h3><i class="fas fa-chart-line"></i> Temperatura en Tiempo Real</h3>
-                        <div class="chart-controls">
-                            <select id="timeRange" class="select-time">
-                                <option value="5">5 min</option>
-                                <option value="15">15 min</option>
-                                <option value="60" selected>1 hora</option>
-                                <option value="240">4 horas</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="temperatureChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Alerts Panel -->
-                <div class="panel alerts-panel">
-                    <div class="panel-header">
-                        <h3><i class="fas fa-bell"></i> Alertas del Sistema</h3>
-                        <button id="clearAlertsBtn" class="btn-clear">
-                            <i class="fas fa-trash"></i> Limpiar
-                        </button>
-                    </div>
-                    <div class="alerts-container">
-                        <div class="alerts-list" id="alertsList">
-                            <!-- Alerts will be dynamically inserted here -->
-                            <div class="alert-item info">
-                                <div class="alert-icon"><i class="fas fa-info-circle"></i></div>
-                                <div class="alert-content">
-                                    <div class="alert-message">Esperando datos del sistema...</div>
-                                    <div class="alert-time">Sistema inicializado</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- System Info Panel -->
-                <div class="panel info-panel">
-                    <div class="panel-header">
-                        <h3><i class="fas fa-info-circle"></i> Estado del Sistema</h3>
-                    </div>
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <div class="info-icon" id="wsStatusIcon"><i class="fas fa-plug"></i></div>
-                            <div class="info-content">
-                                <div class="info-value" id="wsStatus">Desconectado</div>
-                                <div class="info-label">WebSocket</div>
-                            </div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-icon" id="apiStatusIcon"><i class="fas fa-server"></i></div>
-                            <div class="info-content">
-                                <div class="info-value" id="apiStatus">Desconocido</div>
-                                <div class="info-label">API REST</div>
-                            </div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-icon"><i class="fas fa-bolt"></i></div>
-                            <div class="info-content">
-                                <div class="info-value" id="dataRate">0.0 Hz</div>
-                                <div class="info-label">Frecuencia</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Footer -->
-        <footer class="dashboard-footer">
-            <div class="footer-content">
-                <div class="footer-left">
-                    <div class="footer-item">
-                        <i class="fas fa-copyright"></i>
-                        <span>Sistema de Monitoreo RT v1.0</span>
-                    </div>
-                    <div class="footer-separator">|</div>
-                    <div class="footer-item">
-                        <i class="fas fa-sync-alt"></i>
-                        <span id="lastUpdate">Última actualización: --</span>
-                    </div>
-                </div>
-                <div class="footer-right">
-                    <button id="exportDataBtn" class="btn-export">
-                        <i class="fas fa-download"></i> Exportar Datos
-                    </button>
-                    <button id="refreshBtn" class="btn-refresh">
-                        <i class="fas fa-redo"></i> Actualizar
-                    </button>
-                </div>
-            </div>
-        </footer>
+        </div>
     </div>
-
-    <!-- Notification Sound (hidden audio element) -->
-    <audio id="alertSound" preload="auto">
-        <source src="https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3" type="audio/mpeg">
-    </audio>
-
-    <!-- JavaScript Files -->
-    <script src="app.js"></script>
+    
+    <!-- Contenedor de notificaciones toast -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Script principal - JavaScript local -->
+    <script src="/static/app.js"></script>
 </body>
 </html>

@@ -1,775 +1,889 @@
 /**
- * Sistema de Monitoreo en Tiempo Real - Frontend
- * app.js - Lógica principal del dashboard
+ * DASHBOARD.JS - Sistema de Monitoreo con SEMÁFOROS
+ * Versión con datos dinámicos y alertas en tiempo real
  */
 
-// Variables globales del sistema
-class SensorDashboard {
-    constructor() {
-        this.ws = null;
-        this.temperatureChart = null;
-        this.autoUpdate = true;
-        this.updateCount = 0;
-        this.lastUpdateTime = null;
-        this.chartData = {
-            labels: [],
-            temperatures: []
-        };
-        this.sensors = {};
-        this.alertCount = 0;
-        
-        this.init();
-    }
+// ============================================
+// CONFIGURACIÓN GLOBAL
+// ============================================
+
+const CONFIG = {
+    MAX_RECONNECT_ATTEMPTS: 5,
+    MAX_ALERTS: 50,
+    MAX_DATA_POINTS: {
+        '1min': 10,
+        '5min': 30,
+        '15min': 45,
+        '1hour': 60
+    },
+    REFRESH_INTERVALS: {
+        SEMAPHORES: 3000, // 3 segundos
+        TOAST_TIMEOUT: 5000 // 5 segundos
+    },
+    THRESHOLDS: {
+        TEMP_HIGH: 28,
+        TEMP_CRITICAL: 32,
+        TEMP_LOW: 18,
+        HUMIDITY_HIGH: 75,
+        HUMIDITY_CRITICAL: 85,
+        CO2_HIGH: 900,
+        CO2_CRITICAL: 1200,
+        PRESSURE_LOW: 990,
+        PRESSURE_HIGH: 1040
+    },
+    LOCATIONS: ['Sala Principal', 'Exterior', 'Laboratorio', 'Oficina', 'Almacén', 'Sótano', 'Azotea']
+};
+
+// ============================================
+// ESTADO GLOBAL
+// ============================================
+
+const AppState = {
+    ws: null,
+    reconnectAttempts: 0,
     
-    // Inicializar el dashboard
-    init() {
-        console.log('🚀 Inicializando Dashboard de Monitoreo...');
-        
-        // Inicializar WebSocket
-        this.initWebSocket();
-        
-        // Inicializar gráficos
-        this.initChart();
-        
-        // Configurar event listeners
-        this.setupEventListeners();
-        
-        // Inicializar hora del sistema
-        this.initSystemTime();
-        
-        // Verificar estado inicial del sistema
-        this.checkSystemStatus();
-        
-        console.log('✅ Dashboard inicializado correctamente');
-    }
+    temperatureHistory: [],
+    timestampHistory: [],
+    previousValues: {
+        temp: null,
+        hum: null,
+        pres: null,
+        co2: null
+    },
     
-    // Inicializar conexión WebSocket
-    initWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname || 'localhost';
-        const port = window.location.port || '8000';
-        const wsUrl = `${protocol}//${host}:${port}/ws/sensors`;
-        
-        console.log(`🔌 Conectando a WebSocket: ${wsUrl}`);
-        
-        this.ws = new WebSocket(wsUrl);
-        
-        this.ws.onopen = () => {
-            console.log('✅ Conexión WebSocket establecida');
-            this.updateConnectionStatus(true);
-            this.updateApiStatus(true);
-            this.addAlert('Sistema conectado correctamente', 'info');
+    activeAlerts: [],
+    alertId: 0,
+    currentFilter: 'all',
+    chartPeriod: '1min',
+    
+    temperatureChart: null,
+    
+    elements: {}
+};
+
+// ============================================
+// UTILIDADES
+// ============================================
+
+const Utils = {
+    formatTime: (date = new Date()) => {
+        return date.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    },
+    
+    getRandomLocation: () => {
+        return CONFIG.LOCATIONS[Math.floor(Math.random() * CONFIG.LOCATIONS.length)];
+    },
+    
+    getSensorIcon: (sensorId) => {
+        if (sensorId.includes('temp')) return '🌡️';
+        if (sensorId.includes('hum')) return '💧';
+        if (sensorId.includes('co2')) return '🏭';
+        return '🌀';
+    },
+    
+    getTempColor: (temp) => {
+        if (temp > CONFIG.THRESHOLDS.TEMP_CRITICAL) return '#ef4444';
+        if (temp > CONFIG.THRESHOLDS.TEMP_HIGH) return '#f59e0b';
+        if (temp < CONFIG.THRESHOLDS.TEMP_LOW) return '#3b82f6';
+        return '#10b981';
+    },
+    
+    getCO2Color: (co2) => {
+        if (co2 > CONFIG.THRESHOLDS.CO2_CRITICAL) return '#ef4444';
+        if (co2 > CONFIG.THRESHOLDS.CO2_HIGH) return '#f59e0b';
+        return '#10b981';
+    },
+    
+    calculateTrend: (current, previous) => {
+        if (previous === null) return { icon: '➡️', text: 'Estable' };
+        if (current > previous) return { icon: '📈', text: 'Subiendo' };
+        if (current < previous) return { icon: '📉', text: 'Bajando' };
+        return { icon: '➡️', text: 'Estable' };
+    }
+};
+
+// ============================================
+// DOM HANDLER
+// ============================================
+
+const DOMHandler = {
+    init: () => {
+        AppState.elements = {
+            statusLed: document.getElementById('statusLed'),
+            statusText: document.getElementById('statusText'),
+            lastUpdate: document.getElementById('lastUpdate'),
+            activeAlertsCount: document.getElementById('activeAlertsCount'),
+            connectionsCount: document.getElementById('connectionsCount'),
             
-            // Enviar suscripción inicial
-            this.ws.send(JSON.stringify({
-                type: 'subscribe',
-                sensor_id: 'all',
-                timestamp: new Date().toISOString()
-            }));
-        };
-        
-        this.ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                this.handleWebSocketMessage(data);
-            } catch (error) {
-                console.error('❌ Error procesando mensaje WebSocket:', error);
-                this.addAlert('Error procesando datos del servidor', 'high');
-            }
-        };
-        
-        this.ws.onclose = () => {
-            console.log('❌ Conexión WebSocket cerrada');
-            this.updateConnectionStatus(false);
-            this.addAlert('Conexión perdida, reconectando...', 'high');
+            tempValue: document.getElementById('tempValue'),
+            humidityValue: document.getElementById('humidityValue'),
+            pressureValue: document.getElementById('pressureValue'),
+            co2Value: document.getElementById('co2Value'),
             
-            // Intentar reconectar después de 5 segundos
-            setTimeout(() => this.initWebSocket(), 5000);
+            tempTime: document.getElementById('tempTime'),
+            humidityTime: document.getElementById('humidityTime'),
+            pressureTime: document.getElementById('pressureTime'),
+            co2Time: document.getElementById('co2Time'),
+            
+            tempTrend: document.getElementById('tempTrend'),
+            humTrend: document.getElementById('humTrend'),
+            presTrend: document.getElementById('presTrend'),
+            co2Trend: document.getElementById('co2Trend'),
+            
+            tempLocation: document.getElementById('tempLocation'),
+            humLocation: document.getElementById('humLocation'),
+            presLocation: document.getElementById('presLocation'),
+            co2Location: document.getElementById('co2Location'),
+            
+            tempAlertBadge: document.getElementById('tempAlertBadge'),
+            humAlertBadge: document.getElementById('humAlertBadge'),
+            presAlertBadge: document.getElementById('presAlertBadge'),
+            co2AlertBadge: document.getElementById('co2AlertBadge'),
+            
+            criticalCount: document.getElementById('criticalCount'),
+            statCritical: document.getElementById('statCritical'),
+            statHigh: document.getElementById('statHigh'),
+            statMedium: document.getElementById('statMedium'),
+            statLow: document.getElementById('statLow'),
+            alertsBadge: document.getElementById('alertsBadge'),
+            
+            semaphoreGrid: document.getElementById('semaphoreGrid'),
+            alertsList: document.getElementById('alertsList'),
+            toastContainer: document.getElementById('toastContainer'),
+            temperatureChart: document.getElementById('temperatureChart')
+        };
+    },
+    
+    updateSensorValue: (sensor, value, unit, timestamp) => {
+        const valueMap = {
+            temp: 'tempValue',
+            hum: 'humidityValue',
+            pres: 'pressureValue',
+            co2: 'co2Value'
         };
         
-        this.ws.onerror = (error) => {
-            console.error('❌ Error en conexión WebSocket:', error);
-            this.updateConnectionStatus(false);
-            this.addAlert('Error de conexión con el servidor', 'critical');
-        };
-    }
-    
-    // Manejar mensajes WebSocket
-    handleWebSocketMessage(data) {
-        this.updateCount++;
-        const now = new Date();
-        this.lastUpdateTime = now;
-        
-        // Actualizar tiempo de última actualización
-        this.updateLastUpdateTime(now);
-        
-        // Calcular frecuencia de actualización
-        this.updateDataRate();
-        
-        // Procesar según el tipo de mensaje
-        switch(data.type) {
-            case 'connection_established':
-                console.log('📡 Conectado al sistema de monitoreo:', data.message);
-                break;
-                
-            case 'sensor_data':
-                this.handleSensorData(data.data);
-                break;
-                
-            case 'alert':
-                if (data.alerts && data.alerts.length > 0) {
-                    data.alerts.forEach(alert => {
-                        this.handleAlert(alert);
-                    });
-                }
-                break;
-                
-            case 'subscription_confirmed':
-                console.log('✅ Suscripción confirmada:', data.message);
-                break;
-                
-            default:
-                console.log('📨 Mensaje recibido:', data);
-        }
-    }
-    
-    // Manejar datos de sensores
-    handleSensorData(sensorData) {
-        if (!this.autoUpdate) return;
-        
-        const sensorId = sensorData.sensor_id || 'unknown';
-        
-        // Actualizar datos del sensor
-        this.sensors[sensorId] = {
-            ...sensorData,
-            receivedAt: new Date().toISOString(),
-            lastUpdate: new Date()
+        const timeMap = {
+            temp: 'tempTime',
+            hum: 'humidityTime',
+            pres: 'pressureTime',
+            co2: 'co2Time'
         };
         
-        // Determinar tipo de sensor y actualizar UI
-        if (sensorData.temperature !== undefined) {
-            this.updateTemperatureSensor(sensorData);
-        }
+        const trendMap = {
+            temp: 'tempTrend',
+            hum: 'humTrend',
+            pres: 'presTrend',
+            co2: 'co2Trend'
+        };
         
-        if (sensorData.humidity !== undefined) {
-            this.updateHumiditySensor(sensorData);
-        }
+        const element = AppState.elements[valueMap[sensor]];
+        const timeElement = AppState.elements[timeMap[sensor]];
+        const trendElement = AppState.elements[trendMap[sensor]];
         
-        if (sensorData.pressure !== undefined) {
-            this.updatePressureSensor(sensorData);
-        }
-        
-        // Actualizar estadísticas
-        this.updateStats();
-    }
-    
-    // Manejar alertas
-    handleAlert(alert) {
-        const severity = alert.severity || 'medium';
-        const message = alert.message || 'Nueva alerta del sistema';
-        const sensorId = alert.sensor_id || 'Sistema';
-        
-        this.alertCount++;
-        
-        // Agregar alerta a la interfaz
-        this.addAlert(`${sensorId}: ${message}`, severity);
-        
-        // Reproducir sonido de alerta si es crítica o alta
-        if (severity === 'critical' || severity === 'high') {
-            this.playAlertSound();
-        }
-        
-        // Actualizar contador de alertas
-        this.updateAlertCount();
-    }
-    
-    // Actualizar sensor de temperatura
-    updateTemperatureSensor(data) {
-        const value = data.temperature;
-        const sensorId = data.sensor_id || 'temp_001';
-        
-        // Crear o actualizar tarjeta de sensor
-        let card = this.getSensorCard(sensorId);
-        if (!card) {
-            card = this.createSensorCard({
-                id: sensorId,
-                name: 'Sensor de Temperatura',
-                type: 'temperature',
-                value: value,
-                unit: '°C',
-                location: data.location || 'Desconocida'
-            });
-        }
-        
-        // Actualizar valores
-        this.updateSensorCard(card, {
-            value: value.toFixed(1),
-            unit: '°C',
-            time: new Date().toLocaleTimeString(),
-            location: data.location || 'Desconocida'
-        });
-        
-        // Actualizar gráfico
-        this.updateTemperatureChart(value);
-        
-        // Verificar alertas
-        if (value > 35) {
-            card.classList.add('critical');
-            if (value > 38) {
-                this.addAlert(`¡Temperatura crítica en ${sensorId}: ${value.toFixed(1)}°C`, 'critical');
+        if (element) {
+            if (sensor === 'temp') {
+                element.style.color = Utils.getTempColor(value);
+            } else if (sensor === 'co2') {
+                element.style.color = Utils.getCO2Color(value);
             }
-        } else {
-            card.classList.remove('critical');
-        }
-    }
-    
-    // Actualizar sensor de humedad
-    updateHumiditySensor(data) {
-        const value = data.humidity;
-        const sensorId = data.sensor_id || 'hum_001';
-        
-        let card = this.getSensorCard(sensorId);
-        if (!card) {
-            card = this.createSensorCard({
-                id: sensorId,
-                name: 'Sensor de Humedad',
-                type: 'humidity',
-                value: value,
-                unit: '%',
-                location: data.location || 'Desconocida'
-            });
-        }
-        
-        this.updateSensorCard(card, {
-            value: value.toFixed(1),
-            unit: '%',
-            time: new Date().toLocaleTimeString(),
-            location: data.location || 'Desconocida'
-        });
-        
-        // Verificar alertas
-        if (value > 80) {
-            card.classList.add('critical');
-            this.addAlert(`¡Humedad alta en ${sensorId}: ${value.toFixed(1)}%`, 'high');
-        } else if (value < 30) {
-            card.classList.add('critical');
-            this.addAlert(`¡Humedad baja en ${sensorId}: ${value.toFixed(1)}%`, 'high');
-        } else {
-            card.classList.remove('critical');
-        }
-    }
-    
-    // Actualizar sensor de presión
-    updatePressureSensor(data) {
-        const value = data.pressure;
-        const sensorId = data.sensor_id || 'press_001';
-        
-        let card = this.getSensorCard(sensorId);
-        if (!card) {
-            card = this.createSensorCard({
-                id: sensorId,
-                name: 'Sensor de Presión',
-                type: 'pressure',
-                value: value,
-                unit: 'hPa',
-                location: data.location || 'Desconocida'
-            });
-        }
-        
-        this.updateSensorCard(card, {
-            value: value.toFixed(1),
-            unit: 'hPa',
-            time: new Date().toLocaleTimeString(),
-            location: data.location || 'Desconocida'
-        });
-    }
-    
-    // Obtener tarjeta de sensor existente
-    getSensorCard(sensorId) {
-        return document.querySelector(`[data-sensor-id="${sensorId}"]`);
-    }
-    
-    // Crear nueva tarjeta de sensor
-    createSensorCard(sensor) {
-        const sensorGrid = document.getElementById('sensorGrid');
-        
-        const card = document.createElement('div');
-        card.className = 'sensor-card';
-        card.dataset.sensorId = sensor.id;
-        
-        const icon = this.getSensorIcon(sensor.type);
-        
-        card.innerHTML = `
-            <div class="sensor-header">
-                <div class="sensor-name">${icon} ${sensor.name}</div>
-                <span class="sensor-type">${sensor.type}</span>
-            </div>
-            <div class="sensor-value ${this.getValueClass(sensor.type, sensor.value)}">
-                ${sensor.value.toFixed(1)} ${sensor.unit}
-            </div>
-            <div class="sensor-meta">
-                <div class="meta-item">
-                    <span class="meta-label">📍 Ubicación</span>
-                    <span class="meta-value sensor-location">${sensor.location}</span>
-                </div>
-                <div class="meta-item">
-                    <span class="meta-label">⏱️ Última lectura</span>
-                    <span class="meta-value sensor-time">${new Date().toLocaleTimeString()}</span>
-                </div>
-            </div>
-        `;
-        
-        sensorGrid.appendChild(card);
-        return card;
-    }
-    
-    // Actualizar tarjeta de sensor
-    updateSensorCard(card, data) {
-        const valueElement = card.querySelector('.sensor-value');
-        const timeElement = card.querySelector('.sensor-time');
-        const locationElement = card.querySelector('.sensor-location');
-        
-        if (valueElement) {
-            valueElement.textContent = `${data.value} ${data.unit}`;
-            // Actualizar clase de color si es temperatura
-            if (valueElement.textContent.includes('°C')) {
-                const tempValue = parseFloat(data.value);
-                valueElement.className = 'sensor-value ' + this.getTemperatureClass(tempValue);
-            }
+            
+            element.innerHTML = `${value}<span class="sensor-unit">${unit}</span>`;
         }
         
         if (timeElement) {
-            timeElement.textContent = data.time;
+            timeElement.textContent = `Última actualización: ${timestamp}`;
         }
         
-        if (locationElement) {
-            locationElement.textContent = data.location;
+        const prev = AppState.previousValues[sensor];
+        if (prev !== null && trendElement) {
+            const trend = Utils.calculateTrend(value, prev);
+            trendElement.innerHTML = `<span>${trend.icon} ${trend.text}</span>`;
         }
-    }
+        
+        AppState.previousValues[sensor] = value;
+    },
     
-    // Obtener icono según tipo de sensor
-    getSensorIcon(type) {
-        const icons = {
-            'temperature': '<i class="fas fa-thermometer-half"></i>',
-            'humidity': '<i class="fas fa-tint"></i>',
-            'pressure': '<i class="fas fa-tachometer-alt"></i>',
-            'default': '<i class="fas fa-microchip"></i>'
+    updateLocations: () => {
+        if (AppState.elements.tempLocation) {
+            AppState.elements.tempLocation.textContent = Utils.getRandomLocation();
+            AppState.elements.humLocation.textContent = Utils.getRandomLocation();
+            AppState.elements.presLocation.textContent = Utils.getRandomLocation();
+            AppState.elements.co2Location.textContent = Utils.getRandomLocation();
+        }
+    },
+    
+    setSensorAlertBadge: (sensor, type, show) => {
+        const badgeMap = {
+            temp: 'tempAlertBadge',
+            hum: 'humAlertBadge',
+            pres: 'presAlertBadge',
+            co2: 'co2AlertBadge'
         };
-        return icons[type] || icons.default;
-    }
-    
-    // Obtener clase de color para temperatura
-    getTemperatureClass(value) {
-        if (value > 35) return 'temp-high';
-        if (value < 18) return 'temp-low';
-        return 'temp-normal';
-    }
-    
-    // Obtener clase de color para valor
-    getValueClass(type, value) {
-        if (type === 'temperature') {
-            return this.getTemperatureClass(value);
+        
+        const badge = AppState.elements[badgeMap[sensor]];
+        if (badge) {
+            if (show) {
+                badge.style.display = 'block';
+                badge.className = `alert-badge-sensor ${type === 'critical' ? 'critical' : 'warning'}`;
+            } else {
+                badge.style.display = 'none';
+            }
         }
-        return '';
     }
-    
-    // Agregar alerta a la interfaz
-    addAlert(message, severity = 'medium') {
-        const alertsList = document.getElementById('alertsList');
+};
+
+// ============================================
+// CHART MANAGER
+// ============================================
+
+const ChartManager = {
+    init: () => {
+        const ctx = AppState.elements.temperatureChart?.getContext('2d');
+        if (!ctx) return;
         
-        // Si es la alerta de inicialización, eliminarla
-        const initialAlert = alertsList.querySelector('.alert-item.info');
-        if (initialAlert && initialAlert.textContent.includes('Esperando datos')) {
-            initialAlert.remove();
-        }
-        
-        const alertItem = document.createElement('div');
-        alertItem.className = `alert-item ${severity}`;
-        
-        const iconClass = this.getAlertIconClass(severity);
-        const icon = this.getAlertIcon(severity);
-        
-        alertItem.innerHTML = `
-            <div class="alert-icon ${severity}">${icon}</div>
-            <div class="alert-content">
-                <div class="alert-message">${message}</div>
-                <div class="alert-time">
-                    <i class="far fa-clock"></i> ${new Date().toLocaleTimeString()}
-                </div>
-            </div>
-        `;
-        
-        // Agregar al inicio de la lista
-        alertsList.insertBefore(alertItem, alertsList.firstChild);
-        
-        // Limitar a 15 alertas
-        if (alertsList.children.length > 15) {
-            alertsList.removeChild(alertsList.lastChild);
-        }
-        
-        // Animar entrada
-        alertItem.style.animation = 'slideIn 0.3s ease';
-    }
-    
-    // Obtener icono de alerta
-    getAlertIcon(severity) {
-        const icons = {
-            'critical': '<i class="fas fa-fire"></i>',
-            'high': '<i class="fas fa-exclamation-triangle"></i>',
-            'medium': '<i class="fas fa-exclamation-circle"></i>',
-            'low': '<i class="fas fa-info-circle"></i>',
-            'info': '<i class="fas fa-info-circle"></i>'
-        };
-        return icons[severity] || icons.info;
-    }
-    
-    getAlertIconClass(severity) {
-        return severity;
-    }
-    
-    // Actualizar contador de alertas
-    updateAlertCount() {
-        const alertsList = document.getElementById('alertsList');
-        const criticalAlerts = Array.from(alertsList.children).filter(
-            alert => alert.classList.contains('critical') || alert.classList.contains('high')
-        ).length;
-        
-        document.getElementById('activeAlerts').textContent = criticalAlerts;
-    }
-    
-    // Inicializar gráfico de temperatura
-    initChart() {
-        const ctx = document.getElementById('temperatureChart').getContext('2d');
-        
-        this.temperatureChart = new Chart(ctx, {
+        AppState.temperatureChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: this.chartData.labels,
+                labels: AppState.timestampHistory,
                 datasets: [{
                     label: 'Temperatura (°C)',
-                    data: this.chartData.temperatures,
-                    borderColor: '#e74c3c',
-                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.4,
+                    data: AppState.temperatureHistory,
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    borderWidth: 3,
                     fill: true,
-                    pointBackgroundColor: '#e74c3c',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 4,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#ef4444',
+                    pointBorderColor: 'white',
                     pointHoverRadius: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: { duration: 0 },
                 plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top',
-                    },
+                    legend: { display: false },
                     tooltip: {
                         mode: 'index',
                         intersect: false,
-                        callbacks: {
-                            label: function(context) {
-                                return `Temperatura: ${context.parsed.y}°C`;
-                            }
-                        }
+                        backgroundColor: '#1e293b',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#94a3b8',
+                        borderColor: '#334155',
+                        borderWidth: 1
                     }
                 },
                 scales: {
                     y: {
-                        beginAtZero: false,
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' },
                         title: {
                             display: true,
                             text: 'Temperatura (°C)',
-                            font: {
-                                weight: 'bold'
-                            }
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
+                            color: '#94a3b8'
                         }
                     },
                     x: {
-                        title: {
-                            display: true,
-                            text: 'Tiempo',
-                            font: {
-                                weight: 'bold'
-                            }
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        },
+                        grid: { color: '#334155' },
                         ticks: {
-                            maxTicksLimit: 8
+                            color: '#94a3b8',
+                            maxRotation: 45,
+                            minRotation: 45
                         }
                     }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'nearest'
                 }
             }
         });
-    }
+    },
     
-    // Actualizar gráfico de temperatura
-    updateTemperatureChart(temperature) {
-        const now = new Date();
-        const timeLabel = now.getHours().toString().padStart(2, '0') + ':' + 
-                         now.getMinutes().toString().padStart(2, '0');
+    update: (temperature, timestamp) => {
+        if (!AppState.temperatureChart) return;
         
-        // Agregar nuevos datos
-        this.chartData.labels.push(timeLabel);
-        this.chartData.temperatures.push(temperature);
+        AppState.temperatureHistory.push(temperature);
+        AppState.timestampHistory.push(timestamp);
         
-        // Mantener solo últimos 20 puntos
-        if (this.chartData.labels.length > 20) {
-            this.chartData.labels.shift();
-            this.chartData.temperatures.shift();
+        const maxPoints = CONFIG.MAX_DATA_POINTS[AppState.chartPeriod] || 10;
+        
+        if (AppState.temperatureHistory.length > maxPoints) {
+            AppState.temperatureHistory.shift();
+            AppState.timestampHistory.shift();
         }
         
-        // Actualizar gráfico
-        if (this.temperatureChart) {
-            this.temperatureChart.update();
-        }
-    }
+        AppState.temperatureChart.data.datasets[0].data = AppState.temperatureHistory;
+        AppState.temperatureChart.data.labels = AppState.timestampHistory;
+        AppState.temperatureChart.update('none');
+    },
     
-    // Actualizar estado de conexión
-    updateConnectionStatus(connected) {
-        const dot = document.getElementById('statusDot');
-        const text = document.getElementById('statusText');
-        const icon = document.getElementById('wsStatusIcon');
-        const status = document.getElementById('wsStatus');
+    setPeriod: (period) => {
+        AppState.chartPeriod = period;
         
-        if (connected) {
-            dot.className = 'status-dot connected';
-            text.textContent = 'Conectado';
-            if (icon) icon.innerHTML = '<i class="fas fa-plug"></i>';
-            if (status) status.textContent = 'Conectado';
-        } else {
-            dot.className = 'status-dot disconnected';
-            text.textContent = 'Desconectado';
-            if (icon) icon.innerHTML = '<i class="fas fa-plug"></i>';
-            if (status) status.textContent = 'Desconectado';
-        }
-    }
-    
-    // Actualizar estado de API
-    updateApiStatus(connected) {
-        const icon = document.getElementById('apiStatusIcon');
-        const status = document.getElementById('apiStatus');
+        document.querySelectorAll('.chart-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        event.target.classList.add('active');
         
-        if (connected) {
-            if (icon) icon.innerHTML = '<i class="fas fa-server"></i>';
-            if (status) status.textContent = 'Activo';
-        } else {
-            if (icon) icon.innerHTML = '<i class="fas fa-server"></i>';
-            if (status) status.textContent = 'Inactivo';
-        }
+        AppState.temperatureHistory = [];
+        AppState.timestampHistory = [];
     }
+};
+
+// ============================================
+// WEBSOCKET MANAGER
+// ============================================
+
+const WebSocketManager = {
+    connect: () => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/sensors`;
+        
+        AppState.ws = new WebSocket(wsUrl);
+        
+        AppState.ws.onopen = WebSocketManager.handleOpen;
+        AppState.ws.onmessage = WebSocketManager.handleMessage;
+        AppState.ws.onclose = WebSocketManager.handleClose;
+        AppState.ws.onerror = WebSocketManager.handleError;
+    },
     
-    // Actualizar frecuencia de datos
-    updateDataRate() {
-        if (this.updateCount > 0 && this.lastUpdateTime) {
-            const now = Date.now();
-            const diff = (now - this.lastUpdateTime.getTime()) / 1000;
+    handleOpen: () => {
+        console.log('✅ Conectado al servidor');
+        AppState.elements.statusLed.className = 'status-led';
+        AppState.elements.statusText.textContent = 'Conectado';
+        AppState.elements.connectionsCount.textContent = '1';
+        AppState.reconnectAttempts = 0;
+        
+        fetch('/api/current')
+            .then(response => response.json())
+            .then(data => DataHandler.updateFromSensor(data))
+            .catch(console.error);
+        
+        SemaphoreManager.refresh();
+    },
+    
+    handleMessage: (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.temperature !== undefined) {
+            DataHandler.updateFromSensor(data);
+        }
+        
+        if (data.type === 'alert' || (data.alerts && data.alerts.length > 0)) {
+            const alerts = data.alerts || [data];
+            AlertManager.processIncomingAlerts(alerts);
+        }
+        
+        if (data.type === 'sensor_data') {
+            DataHandler.updateFromSensor(data.data || data);
+        }
+    },
+    
+    handleClose: () => {
+        console.log('❌ Conexión cerrada');
+        AppState.elements.statusLed.className = 'status-led disconnected';
+        AppState.elements.statusText.textContent = 'Desconectado';
+        AppState.elements.connectionsCount.textContent = '0';
+        
+        if (AppState.reconnectAttempts < CONFIG.MAX_RECONNECT_ATTEMPTS) {
+            AppState.reconnectAttempts++;
+            setTimeout(WebSocketManager.connect, 2000 * AppState.reconnectAttempts);
+        }
+    },
+    
+    handleError: (error) => {
+        console.error('❌ Error WebSocket:', error);
+    }
+};
+
+// ============================================
+// DATA HANDLER
+// ============================================
+
+const DataHandler = {
+    updateFromSensor: (data) => {
+        const now = Utils.formatTime();
+        AppState.elements.lastUpdate.textContent = now;
+        
+        if (data.temperature !== undefined) {
+            DOMHandler.updateSensorValue('temp', data.temperature, '°C', now);
+        }
+        if (data.humidity !== undefined) {
+            DOMHandler.updateSensorValue('hum', data.humidity, '%', now);
+        }
+        if (data.pressure !== undefined) {
+            DOMHandler.updateSensorValue('pres', data.pressure, 'hPa', now);
+        }
+        if (data.co2 !== undefined) {
+            DOMHandler.updateSensorValue('co2', data.co2, 'ppm', now);
+        }
+        
+        DOMHandler.updateLocations();
+        
+        if (data.temperature !== undefined) {
+            ChartManager.update(data.temperature, now);
+        }
+        
+        AlertManager.checkThresholds(data);
+    }
+};
+
+// ============================================
+// SEMAPHORE MANAGER
+// ============================================
+
+const SemaphoreManager = {
+    refresh: () => {
+        fetch('/api/semaphores/status')
+            .then(response => response.json())
+            .then(data => SemaphoreManager.updateDisplay(data.data))
+            .catch(error => {
+                console.error('Error obteniendo semáforos:', error);
+                SemaphoreManager.showError();
+            });
+    },
+    
+    updateDisplay: (semaphoreData) => {
+        const sensors = semaphoreData.sensors || {};
+        const system = semaphoreData.system_semaphores || {};
+        
+        if (Object.keys(sensors).length === 0) {
+            SemaphoreManager.showEmptyState(system);
+            return;
+        }
+        
+        let html = '';
+        for (const [sensorId, stats] of Object.entries(sensors)) {
+            const queuePercent = Math.min((stats.queue_size / 20) * 100, 100);
+            const lastUpdate = stats.last_update ? new Date(stats.last_update).toLocaleTimeString() : 'Nunca';
             
-            if (diff > 0) {
-                const rate = (1 / diff).toFixed(1);
-                document.getElementById('updateRate').textContent = rate;
-                document.getElementById('dataRate').textContent = `${rate} Hz`;
-            }
-        }
-    }
-    
-    // Actualizar tiempo de última actualización
-    updateLastUpdateTime(time) {
-        const lastUpdate = document.getElementById('lastUpdate');
-        if (lastUpdate) {
-            lastUpdate.innerHTML = `<i class="fas fa-sync-alt"></i> Última actualización: ${time.toLocaleTimeString()}`;
-        }
-    }
-    
-    // Inicializar hora del sistema
-    initSystemTime() {
-        setInterval(() => {
-            const now = new Date();
-            const timeDisplay = document.getElementById('timeDisplay');
-            if (timeDisplay) {
-                timeDisplay.textContent = 
-                    now.getHours().toString().padStart(2, '0') + ':' + 
-                    now.getMinutes().toString().padStart(2, '0') + ':' + 
-                    now.getSeconds().toString().padStart(2, '0');
-            }
-        }, 1000);
-    }
-    
-    // Actualizar estadísticas
-    updateStats() {
-        const sensorCount = Object.keys(this.sensors).length;
-        document.getElementById('totalSensors').textContent = sensorCount;
-    }
-    
-    // Reproducir sonido de alerta
-    playAlertSound() {
-        try {
-            const alertSound = document.getElementById('alertSound');
-            if (alertSound) {
-                alertSound.currentTime = 0;
-                alertSound.play().catch(e => {
-                    console.log('No se pudo reproducir sonido de alerta:', e);
-                });
-            }
-        } catch (e) {
-            console.log('Error reproduciendo sonido de alerta');
-        }
-    }
-    
-    // Configurar event listeners
-    setupEventListeners() {
-        // Botón de pausar/reanudar
-        const toggleBtn = document.getElementById('toggleUpdateBtn');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => this.toggleAutoUpdate());
-        }
-        
-        // Botón de limpiar alertas
-        const clearBtn = document.getElementById('clearAlertsBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => this.clearAlerts());
-        }
-        
-        // Botón de exportar datos
-        const exportBtn = document.getElementById('exportDataBtn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.exportData());
-        }
-        
-        // Botón de actualizar
-        const refreshBtn = document.getElementById('refreshBtn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.refreshDashboard());
-        }
-        
-        // Selector de rango de tiempo
-        const timeRange = document.getElementById('timeRange');
-        if (timeRange) {
-            timeRange.addEventListener('change', (e) => this.changeTimeRange(e.target.value));
-        }
-    }
-    
-    // Alternar actualización automática
-    toggleAutoUpdate() {
-        this.autoUpdate = !this.autoUpdate;
-        const button = document.getElementById('toggleUpdateBtn');
-        const icon = button.querySelector('i');
-        
-        if (this.autoUpdate) {
-            button.innerHTML = '<i class="fas fa-pause"></i> Pausar';
-            button.title = 'Pausar actualización automática';
-            this.addAlert('Actualización automática reanudada', 'low');
-        } else {
-            button.innerHTML = '<i class="fas fa-play"></i> Reanudar';
-            button.title = 'Reanudar actualización automática';
-            this.addAlert('Actualización automática pausada', 'low');
-        }
-    }
-    
-    // Limpiar alertas
-    clearAlerts() {
-        if (confirm('¿Estás seguro de que quieres limpiar todas las alertas?')) {
-            const alertsList = document.getElementById('alertsList');
-            alertsList.innerHTML = `
-                <div class="alert-item info">
-                    <div class="alert-icon info"><i class="fas fa-info-circle"></i></div>
-                    <div class="alert-content">
-                        <div class="alert-message">No hay alertas activas</div>
-                        <div class="alert-time">
-                            <i class="far fa-clock"></i> ${new Date().toLocaleTimeString()}
+            html += `
+                <div class="semaphore-card">
+                    <div class="semaphore-sensor">
+                        <span>${Utils.getSensorIcon(sensorId)}</span>
+                        ${sensorId}
+                        <span style="margin-left: auto; font-size: 0.8rem; color: ${stats.state === 'idle' ? '#10b981' : '#f59e0b'}">
+                            ${stats.state || 'IDLE'}
+                        </span>
+                    </div>
+                    
+                    <div class="semaphore-stats">
+                        <div class="semaphore-stat">
+                            <div class="stat-label">Lectores</div>
+                            <div class="stat-value read-value">${stats.readers_count || 0}</div>
                         </div>
+                        <div class="semaphore-stat">
+                            <div class="stat-label">Escritores</div>
+                            <div class="stat-value write-value">${stats.writers_waiting || 0}</div>
+                        </div>
+                        <div class="semaphore-stat">
+                            <div class="stat-label">Sem Read</div>
+                            <div class="stat-value queue-value">${stats.read_semaphore_value || 0}</div>
+                        </div>
+                        <div class="semaphore-stat">
+                            <div class="stat-label">Sem Write</div>
+                            <div class="stat-value waiting-value">${stats.write_semaphore_value || 0}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="semaphore-queue">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #94a3b8;">Cola de datos</span>
+                            <span style="color: #10b981;">${stats.queue_size || 0} items</span>
+                        </div>
+                        <div class="queue-bar">
+                            <div class="queue-fill" style="width: ${queuePercent}%;"></div>
+                        </div>
+                    </div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; margin-top: 10px; text-align: right;">
+                        Última actividad: ${lastUpdate}
                     </div>
                 </div>
             `;
-            document.getElementById('activeAlerts').textContent = '0';
-            this.addAlert('Alertas limpiadas correctamente', 'info');
         }
-    }
-    
-    // Exportar datos
-    exportData() {
-        const exportData = {
-            exportDate: new Date().toISOString(),
-            systemInfo: {
-                sensors: Object.keys(this.sensors).length,
-                alerts: this.alertCount,
-                updateRate: document.getElementById('dataRate').textContent,
-                connectionStatus: document.getElementById('wsStatus').textContent
-            },
-            sensors: this.sensors,
-            chartData: this.chartData,
-            alerts: Array.from(document.querySelectorAll('.alert-item')).map(item => ({
-                message: item.querySelector('.alert-message').textContent,
-                time: item.querySelector('.alert-time').textContent.replace('⏱️ ', ''),
-                severity: item.className.match(/critical|high|medium|low|info/)?.[0] || 'unknown'
-            }))
-        };
         
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `monitoreo-export-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // Agregar estadísticas del sistema
+        html += `
+            <div class="semaphore-card" style="background: linear-gradient(135deg, #2563eb, #7c3aed);">
+                <div class="semaphore-sensor" style="color: white;">
+                    <span>📊</span> Estadísticas del Sistema
+                </div>
+                <div class="semaphore-stats">
+                    <div class="semaphore-stat" style="background: rgba(255,255,255,0.1);">
+                        <div class="stat-label" style="color: rgba(255,255,255,0.8);">Alertas en cola</div>
+                        <div class="stat-value" style="color: white;">${system.alert_queue_size || 0}</div>
+                    </div>
+                    <div class="semaphore-stat" style="background: rgba(255,255,255,0.1);">
+                        <div class="stat-label" style="color: rgba(255,255,255,0.8);">Broadcast</div>
+                        <div class="stat-value" style="color: white;">${system.broadcast_semaphore || 10}</div>
+                    </div>
+                </div>
+                <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 10px;">
+                    ⏱️ Uptime: ${semaphoreData.uptime_formatted || 'N/A'}
+                </div>
+            </div>
+        `;
         
-        this.addAlert('Datos exportados correctamente', 'info');
-    }
+        AppState.elements.semaphoreGrid.innerHTML = html;
+    },
     
-    // Refrescar dashboard
-    refreshDashboard() {
-        location.reload();
-    }
+    showEmptyState: (system) => {
+        AppState.elements.semaphoreGrid.innerHTML = `
+            <div class="semaphore-card">
+                <div class="semaphore-sensor">
+                    <span>ℹ️</span> No hay sensores activos
+                </div>
+                <div class="semaphore-stats">
+                    <div class="semaphore-stat">
+                        <div class="stat-label">Broadcast</div>
+                        <div class="stat-value read-value">${system.broadcast_semaphore || 10}</div>
+                    </div>
+                    <div class="semaphore-stat">
+                        <div class="stat-label">DB</div>
+                        <div class="stat-value write-value">${system.db_semaphore || 3}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
     
-    // Cambiar rango de tiempo del gráfico
-    changeTimeRange(range) {
-        // Por ahora solo muestra un mensaje, podrías implementar lógica para cambiar el rango
-        this.addAlert(`Rango de tiempo cambiado a ${range} minutos`, 'info');
+    showError: () => {
+        AppState.elements.semaphoreGrid.innerHTML = `
+            <div class="semaphore-card">
+                <div class="semaphore-sensor">
+                    <span>❌</span> Error cargando semáforos
+                </div>
+            </div>
+        `;
     }
-    
-    // Verificar estado del sistema
-    checkSystemStatus() {
-        // Verificar conexión cada 30 segundos
-        setInterval(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ 
-                    type: 'ping', 
-                    timestamp: new Date().toISOString() 
-                }));
-            }
-        }, 30000);
-        
-        // Verificar estado de la API
-        fetch('/api/health')
-            .then(response => response.json())
-            .then(data => {
-                console.log('Estado del sistema:', data);
-                this.updateApiStatus(data.status === 'healthy');
-            })
-            .catch(error => {
-                console.error('Error verificando estado del sistema:', error);
-                this.updateApiStatus(false);
-                this.addAlert('No se pudo verificar el estado del sistema', 'high');
-            });
-    }
-}
+};
 
-// Inicializar el dashboard cuando se cargue la página
+// ============================================
+// ALERT MANAGER
+// ============================================
+
+const AlertManager = {
+    checkThresholds: (data) => {
+        const newAlerts = [];
+        
+        // Temperatura
+        if (data.temperature > CONFIG.THRESHOLDS.TEMP_CRITICAL) {
+            newAlerts.push(AlertManager.createAlert(
+                'Temperatura', data.temperature, '°C',
+                `🔥 Temperatura CRÍTICA: ${data.temperature}°C`,
+                'critical', '🌡️'
+            ));
+            DOMHandler.setSensorAlertBadge('temp', 'critical', true);
+        } else if (data.temperature > CONFIG.THRESHOLDS.TEMP_HIGH) {
+            newAlerts.push(AlertManager.createAlert(
+                'Temperatura', data.temperature, '°C',
+                `⚠️ Temperatura alta: ${data.temperature}°C`,
+                'high', '🌡️'
+            ));
+            DOMHandler.setSensorAlertBadge('temp', 'warning', true);
+        } else if (data.temperature < CONFIG.THRESHOLDS.TEMP_LOW) {
+            newAlerts.push(AlertManager.createAlert(
+                'Temperatura', data.temperature, '°C',
+                `❄️ Temperatura baja: ${data.temperature}°C`,
+                'medium', '🌡️'
+            ));
+            DOMHandler.setSensorAlertBadge('temp', 'warning', true);
+        } else {
+            DOMHandler.setSensorAlertBadge('temp', null, false);
+        }
+        
+        // Humedad
+        if (data.humidity > CONFIG.THRESHOLDS.HUMIDITY_CRITICAL) {
+            newAlerts.push(AlertManager.createAlert(
+                'Humedad', data.humidity, '%',
+                `💧 Humedad CRÍTICA: ${data.humidity}%`,
+                'critical', '💧'
+            ));
+            DOMHandler.setSensorAlertBadge('hum', 'critical', true);
+        } else if (data.humidity > CONFIG.THRESHOLDS.HUMIDITY_HIGH) {
+            newAlerts.push(AlertManager.createAlert(
+                'Humedad', data.humidity, '%',
+                `⚠️ Humedad alta: ${data.humidity}%`,
+                'high', '💧'
+            ));
+            DOMHandler.setSensorAlertBadge('hum', 'warning', true);
+        } else {
+            DOMHandler.setSensorAlertBadge('hum', null, false);
+        }
+        
+        // CO2
+        if (data.co2 > CONFIG.THRESHOLDS.CO2_CRITICAL) {
+            newAlerts.push(AlertManager.createAlert(
+                'CO₂', data.co2, 'ppm',
+                `🏭 CO₂ CRÍTICO: ${data.co2} ppm`,
+                'critical', '🏭'
+            ));
+            DOMHandler.setSensorAlertBadge('co2', 'critical', true);
+        } else if (data.co2 > CONFIG.THRESHOLDS.CO2_HIGH) {
+            newAlerts.push(AlertManager.createAlert(
+                'CO₂', data.co2, 'ppm',
+                `⚠️ CO₂ alto: ${data.co2} ppm`,
+                'high', '🏭'
+            ));
+            DOMHandler.setSensorAlertBadge('co2', 'warning', true);
+        } else {
+            DOMHandler.setSensorAlertBadge('co2', null, false);
+        }
+        
+        // Presión
+        if (data.pressure < CONFIG.THRESHOLDS.PRESSURE_LOW || 
+            data.pressure > CONFIG.THRESHOLDS.PRESSURE_HIGH) {
+            newAlerts.push(AlertManager.createAlert(
+                'Presión', data.pressure, 'hPa',
+                `🌀 Presión anormal: ${data.pressure} hPa`,
+                'low', '🌀'
+            ));
+            DOMHandler.setSensorAlertBadge('pres', 'warning', true);
+        } else {
+            DOMHandler.setSensorAlertBadge('pres', null, false);
+        }
+        
+        newAlerts.forEach(alert => {
+            AppState.activeAlerts.unshift(alert);
+            ToastManager.show(alert);
+        });
+        
+        if (AppState.activeAlerts.length > CONFIG.MAX_ALERTS) {
+            AppState.activeAlerts = AppState.activeAlerts.slice(0, CONFIG.MAX_ALERTS);
+        }
+        
+        AlertManager.updateList();
+    },
+    
+    createAlert: (sensor, value, unit, message, severity, icon) => {
+        return {
+            id: AppState.alertId++,
+            sensor: sensor,
+            value: value,
+            unit: unit,
+            message: message,
+            severity: severity,
+            timestamp: new Date(),
+            sensorIcon: icon,
+            acknowledged: false
+        };
+    },
+    
+    processIncomingAlerts: (alerts) => {
+        alerts.forEach(alert => {
+            const newAlert = {
+                id: AppState.alertId++,
+                sensor: alert.sensor || alert.alert_type?.split('_')[1] || 'Sensor',
+                value: alert.value || alert.actual_value || 0,
+                message: alert.message,
+                severity: alert.severity || 'medium',
+                timestamp: new Date(alert.timestamp || Date.now()),
+                sensorIcon: alert.sensor === 'Temperatura' ? '🌡️' : 
+                           alert.sensor === 'Humedad' ? '💧' : 
+                           alert.sensor === 'CO₂' ? '🏭' : '🌀',
+                acknowledged: false
+            };
+            AppState.activeAlerts.unshift(newAlert);
+            ToastManager.show(newAlert);
+        });
+        
+        AlertManager.updateList();
+    },
+    
+    updateList: () => {
+        const filteredAlerts = AppState.currentFilter === 'all' 
+            ? AppState.activeAlerts 
+            : AppState.activeAlerts.filter(a => a.severity === AppState.currentFilter);
+        
+        if (filteredAlerts.length === 0) {
+            AppState.elements.alertsList.innerHTML = `
+                <div class="alert-item alert-low">
+                    <div class="alert-header">
+                        <div class="alert-title">
+                            <div class="alert-icon">✅</div>
+                            Sin alertas
+                        </div>
+                    </div>
+                    <div class="alert-message">
+                        No hay alertas activas en este momento
+                    </div>
+                </div>
+            `;
+        } else {
+            AppState.elements.alertsList.innerHTML = filteredAlerts.map(alert => `
+                <div class="alert-item alert-${alert.severity}" data-id="${alert.id}" data-severity="${alert.severity}">
+                    <div class="alert-header">
+                        <div class="alert-title">
+                            <div class="alert-icon">${alert.sensorIcon}</div>
+                            ${alert.sensor} - ${AlertManager.getSeverityLabel(alert.severity)}
+                        </div>
+                        <div class="alert-time">${moment(alert.timestamp).fromNow()}</div>
+                    </div>
+                    <div class="alert-message">
+                        ${alert.message}
+                    </div>
+                    <div class="alert-footer">
+                        <div class="alert-sensor">
+                            <span>${alert.sensorIcon}</span> ${alert.sensor}
+                        </div>
+                        <div class="alert-actions">
+                            ${!alert.acknowledged ? 
+                                `<button class="alert-btn" onclick="AlertManager.acknowledge(${alert.id})">✓ Reconocer</button>` : 
+                                '<span style="color: #10b981;">✓ Reconocida</span>'}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        AlertManager.updateCounters();
+    },
+    
+    getSeverityLabel: (severity) => {
+        const labels = {
+            'critical': '🔴 CRÍTICA',
+            'high': '🟠 ALTA',
+            'medium': '🟡 MEDIA',
+            'low': '🔵 BAJA'
+        };
+        return labels[severity] || severity.toUpperCase();
+    },
+    
+    updateCounters: () => {
+        const critical = AppState.activeAlerts.filter(a => a.severity === 'critical').length;
+        const high = AppState.activeAlerts.filter(a => a.severity === 'high').length;
+        const medium = AppState.activeAlerts.filter(a => a.severity === 'medium').length;
+        const low = AppState.activeAlerts.filter(a => a.severity === 'low').length;
+        
+        if (AppState.elements.criticalCount) AppState.elements.criticalCount.textContent = critical;
+        if (AppState.elements.statCritical) AppState.elements.statCritical.textContent = critical;
+        if (AppState.elements.statHigh) AppState.elements.statHigh.textContent = high;
+        if (AppState.elements.statMedium) AppState.elements.statMedium.textContent = medium;
+        if (AppState.elements.statLow) AppState.elements.statLow.textContent = low;
+        
+        if (AppState.elements.activeAlertsCount) {
+            AppState.elements.activeAlertsCount.textContent = AppState.activeAlerts.length;
+        }
+        
+        const badge = AppState.elements.alertsBadge;
+        if (badge) {
+            if (critical > 0) {
+                badge.style.background = '#ef4444';
+                badge.innerHTML = `<span>${critical}</span> críticas`;
+            } else if (high > 0) {
+                badge.style.background = '#f59e0b';
+                badge.innerHTML = `<span>${high}</span> altas`;
+            } else if (medium > 0) {
+                badge.style.background = '#3b82f6';
+                badge.innerHTML = `<span>${medium}</span> medias`;
+            } else if (low > 0) {
+                badge.style.background = '#10b981';
+                badge.innerHTML = `<span>${low}</span> bajas`;
+            } else {
+                badge.style.background = '#64748b';
+                badge.innerHTML = '0 alertas';
+            }
+        }
+    },
+    
+    acknowledge: (alertId) => {
+        const alert = AppState.activeAlerts.find(a => a.id == alertId);
+        if (alert) {
+            alert.acknowledged = true;
+            AlertManager.updateList();
+            
+            ToastManager.show({
+                severity: 'low',
+                message: 'Alerta reconocida',
+                sensor: 'Sistema'
+            });
+        }
+    },
+    
+    filter: (severity) => {
+        AppState.currentFilter = severity;
+        
+        document.querySelectorAll('.alert-filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        if (event) event.target.classList.add('active');
+        
+        AlertManager.updateList();
+    },
+    
+    clearAll: () => {
+        AppState.activeAlerts = [];
+        AlertManager.updateList();
+        
+        ToastManager.show({
+            severity: 'low',
+            message: 'Todas las alertas han sido limpiadas',
+            sensor: 'Sistema'
+        });
+    }
+};
+
+// ============================================
+// TOAST MANAGER
+// ============================================
+
+const ToastManager = {
+    show: (alert) => {
+        const toast = document.createElement('div');
+        toast.className = `toast ${alert.severity}`;
+        
+        const severityIcon = {
+            'critical': '🔴',
+            'high': '🟠',
+            'medium': '🟡',
+            'low': '🔵'
+        }[alert.severity] || '⚪';
+        
+        toast.innerHTML = `
+            <div class="toast-header">
+                <span>${severityIcon} ${alert.severity.toUpperCase()}</span>
+                <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
+            </div>
+            <div>${alert.message}</div>
+            <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 5px;">
+                ${moment().format('HH:mm:ss')}
+            </div>
+        `;
+        
+        AppState.elements.toastContainer.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.remove();
+            }
+        }, CONFIG.REFRESH_INTERVALS.TOAST_TIMEOUT);
+    }
+};
+
+// ============================================
+// EXPOSICIÓN GLOBAL DE FUNCIONES
+// ============================================
+
+window.setChartPeriod = (period) => ChartManager.setPeriod(period);
+window.refreshSemaphores = () => SemaphoreManager.refresh();
+window.filterAlerts = (severity) => AlertManager.filter(severity);
+window.acknowledgeAlert = (alertId) => AlertManager.acknowledge(alertId);
+window.clearAllAlerts = () => AlertManager.clearAll();
+
+// ============================================
+// INICIALIZACIÓN
+// ============================================
+
 document.addEventListener('DOMContentLoaded', () => {
-    window.sensorDashboard = new SensorDashboard();
+    console.log('🚦 Inicializando dashboard con semáforos...');
+    
+    DOMHandler.init();
+    ChartManager.init();
+    WebSocketManager.connect();
+    
+    setInterval(SemaphoreManager.refresh, CONFIG.REFRESH_INTERVALS.SEMAPHORES);
 });

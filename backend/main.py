@@ -1,15 +1,16 @@
 """
 Servidor principal del sistema de monitoreo en tiempo real
-CON SEMÁFOROS PARA CONTROL DE CONCURRENCIA
+CON SEMÁFOROS Y DATOS DINÁMICOS
 """
 import asyncio
 import logging
 import json
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
 import random
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional
 import threading
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +25,7 @@ from sqlalchemy.orm import sessionmaker
 from websocket_manager import ws_manager
 from config import settings
 from models import SensorData, Alert, Base
-from sensor_semaphore import sensor_semaphore_manager, SensorSemaphore
+from sensor_semaphore import sensor_semaphore_manager
 
 # Configuración de logging
 logging.basicConfig(
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.DATABASE_URL, 
     echo=False,
-    pool_size=10,  # Pool de conexiones
+    pool_size=10,
     max_overflow=20,
     pool_pre_ping=True
 )
@@ -50,35 +51,25 @@ def init_database():
         logger.info("✅ Tablas de base de datos creadas correctamente")
     except Exception as e:
         logger.error(f"❌ Error creando tablas: {e}")
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Tablas recreadas después de error")
 
 init_database()
 
-# Dependencia de base de datos CON SEMÁFORO
+# Dependencia de base de datos
 def get_db():
-    """Obtiene sesión de base de datos con control de semáforo"""
-    db_acquired = sensor_semaphore_manager.acquire_db(timeout=5)
-    if not db_acquired:
-        logger.warning("⚠️ Semáforo de DB no disponible, usando conexión directa")
-    
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-        if db_acquired:
-            sensor_semaphore_manager.release_db()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Ciclo de vida de la aplicación con semáforos"""
+    """Ciclo de vida de la aplicación"""
     logger.info("🚀 Iniciando sistema de monitoreo con SEMÁFOROS...")
     
     # Iniciar tareas de background
     broadcast_task = asyncio.create_task(broadcast_sensor_data())
-    alert_processor_task = asyncio.create_task(process_alert_queue())
+    alert_generator_task = asyncio.create_task(generate_alerts())
     
     logger.info(f"✅ Sistema de monitoreo iniciado - {settings.VERSION}")
     logger.info(f"🚦 Semáforos configurados: Readers={settings.MAX_CONCURRENT_READERS}")
@@ -87,7 +78,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     broadcast_task.cancel()
-    alert_processor_task.cancel()
+    alert_generator_task.cancel()
     logger.info("🛑 Sistema de monitoreo detenido")
 
 # Crear aplicación FastAPI
@@ -107,19 +98,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Montar archivos estáticos
-try:
-    app.mount("/static", StaticFiles(directory="../frontend"), name="static")
-except:
-    logger.warning("No se encontró directorio frontend")
+# ============= ARCHIVOS ESTÁTICOS =============
+
+BASE_DIR = Path(__file__).parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+    logger.info(f"✅ Archivos estáticos montados desde: {FRONTEND_DIR}")
+else:
+    logger.warning(f"⚠️ Directorio frontend no encontrado en: {FRONTEND_DIR}")
+
+# ============= ENDPOINT PRINCIPAL =============
+
+@app.get("/", response_class=HTMLResponse)
+async def get_dashboard():
+    """Sirve el dashboard principal"""
+    index_path = FRONTEND_DIR / "index.html"
+    
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content)
+    
+    return HTMLResponse("<h1>Error: index.html no encontrado</h1>")
 
 # ============= ENDPOINTS DE SEMÁFOROS =============
 
 @app.get("/api/semaphores/status")
 async def get_semaphore_status():
-    """
-    🚦 ENDPOINT PRINCIPAL: Estado de todos los semáforos del sistema
-    """
+    """Estado de todos los semáforos del sistema"""
     stats = sensor_semaphore_manager.get_system_stats()
     return {
         "status": "success",
@@ -129,9 +137,7 @@ async def get_semaphore_status():
 
 @app.get("/api/semaphores/sensor/{sensor_id}")
 async def get_sensor_semaphore_status(sensor_id: str):
-    """
-    🚦 Obtiene estado del semáforo para un sensor específico
-    """
+    """Estado del semáforo para un sensor específico"""
     sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
     return {
         "status": "success",
@@ -139,329 +145,74 @@ async def get_sensor_semaphore_status(sensor_id: str):
         "data": sem.get_stats()
     }
 
-@app.post("/api/semaphores/test/concurrency")
-async def test_semaphore_concurrency(background_tasks: BackgroundTasks):
-    """
-    🚦 Prueba de concurrencia con semáforos
-    """
-    def concurrent_reader(reader_id: int, sensor_id: str):
-        """Simula un lector concurrente"""
-        sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
-        
-        if sem.acquire_read(timeout=2):
-            try:
-                time.sleep(random.uniform(0.1, 0.5))
-                logger.info(f"📖 Lector {reader_id} leyendo sensor {sensor_id}")
-            finally:
-                sem.release_read()
-    
-    def concurrent_writer(writer_id: int, sensor_id: str):
-        """Simula un escritor concurrente"""
-        sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
-        
-        if sem.acquire_write(timeout=2):
-            try:
-                time.sleep(random.uniform(0.2, 0.8))
-                logger.info(f"✍️ Escritor {writer_id} escribiendo sensor {sensor_id}")
-            finally:
-                sem.release_write()
-    
-    # Iniciar pruebas
-    sensor_id = "test_sensor_001"
-    for i in range(5):
-        background_tasks.add_task(concurrent_reader, i, sensor_id)
-    for i in range(2):
-        background_tasks.add_task(concurrent_writer, i, sensor_id)
-    
+# ============= ENDPOINTS DE SENSORES =============
+
+@app.get("/api/current")
+async def get_current_data():
+    """Datos actuales de todos los sensores"""
+    # Simular lecturas de diferentes sensores
     return {
-        "message": "Prueba de concurrencia iniciada",
-        "sensor_id": sensor_id,
-        "readers": 5,
-        "writers": 2
-    }
-
-# ============= ENDPOINTS PRINCIPALES =============
-
-@app.get("/", response_class=HTMLResponse)
-async def get_dashboard():
-    """Dashboard principal con soporte para semáforos"""
-    return HTMLResponse(f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Sistema de Monitoreo con Semáforos</title>
-        <style>
-            body {{ font-family: Arial; padding: 20px; background: #f5f5f5; }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 15px; margin-bottom: 30px; text-align: center; }}
-            .grid {{ display: grid; grid-template-columns: 2fr 1fr; gap: 25px; }}
-            .card {{ background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }}
-            .semaphore-card {{ background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%); color: white; margin-top: 20px; }}
-            .sensor-value {{ font-size: 48px; font-weight: bold; margin: 20px 0; }}
-            .alert {{ color: #e74c3c; animation: pulse 1s infinite; padding: 10px; border-left: 4px solid #e74c3c; background: #ffebee; margin: 10px 0; }}
-            .success {{ color: #27ae60; padding: 10px; border-left: 4px solid #27ae60; background: #e9f7ef; margin: 10px 0; }}
-            .info {{ color: #3498db; padding: 10px; border-left: 4px solid #3498db; background: #e1f0fa; margin: 10px 0; }}
-            @keyframes pulse {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.7; }} 100% {{ opacity: 1; }} }}
-            button {{ padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }}
-            button:hover {{ background: #2980b9; }}
-            .badge {{ display: inline-block; padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
-            .badge-red {{ background: #e74c3c; color: white; }}
-            .badge-green {{ background: #27ae60; color: white; }}
-            .badge-blue {{ background: #3498db; color: white; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🚦 Sistema de Monitoreo con SEMÁFOROS</h1>
-                <p id="connectionStatus">Conectando a WebSocket...</p>
-                <div>
-                    <span class="badge badge-blue" id="semaphoreStatus">Semáforos: Activos</span>
-                    <span class="badge" id="readerCount">Lectores: 0</span>
-                    <span class="badge" id="writerCount">Escritores: 0</span>
-                </div>
-            </div>
-            
-            <div class="grid">
-                <div class="card">
-                    <h2>📊 Datos de Sensores</h2>
-                    <div id="sensors">
-                        <div class="success">✅ Esperando datos...</div>
-                    </div>
-                    <button onclick="refreshData()">🔄 Actualizar</button>
-                    <button onclick="testConcurrency()">🧪 Probar Concurrencia</button>
-                </div>
-                
-                <div class="card">
-                    <h2>⚠️ Alertas</h2>
-                    <div id="alerts">
-                        <div class="success">✅ Sistema inicializado</div>
-                    </div>
-                    <button onclick="clearAlerts()">🗑️ Limpiar</button>
-                </div>
-            </div>
-            
-            <div class="card semaphore-card">
-                <h2>🚦 Estado de Semáforos</h2>
-                <div id="semaphoreInfo">
-                    <p>Cargando estado de semáforos...</p>
-                </div>
-                <button onclick="refreshSemaphores()">🔄 Actualizar Semáforos</button>
-            </div>
-            
-            <div class="card">
-                <h2>📡 Información del Sistema</h2>
-                <p><strong>WebSocket:</strong> <span id="wsStatus">Conectando...</span></p>
-                <p><strong>Última actualización:</strong> <span id="lastUpdate">--:--:--</span></p>
-                <p><strong>Datos recibidos:</strong> <span id="dataCount">0</span></p>
-                <p><strong>Conexiones activas:</strong> <span id="activeConnections">0</span></p>
-                <p><strong>Versión:</strong> {settings.VERSION}</p>
-            </div>
-        </div>
-        
-        <script>
-            let ws = null;
-            let dataCount = 0;
-            
-            function connectWebSocket() {{
-                ws = new WebSocket('ws://localhost:8000/ws/sensors');
-                
-                ws.onopen = () => {{
-                    console.log('✅ Conectado al WebSocket');
-                    document.getElementById('connectionStatus').innerHTML = '✅ Conectado - Sistema con SEMÁFOROS activo';
-                    document.getElementById('wsStatus').innerHTML = 'Conectado';
-                    document.getElementById('wsStatus').style.color = '#27ae60';
-                    
-                    // Solicitar estado de semáforos
-                    refreshSemaphores();
-                }};
-                
-                ws.onmessage = (event) => {{
-                    try {{
-                        const data = JSON.parse(event.data);
-                        console.log('📡 Datos:', data);
-                        dataCount++;
-                        document.getElementById('dataCount').innerHTML = dataCount;
-                        document.getElementById('lastUpdate').innerHTML = new Date().toLocaleTimeString();
-                        
-                        if (data.type === 'sensor_data') {{
-                            const sensor = data.data;
-                            let html = `<div class="success">`;
-                            html += `<p><strong>Sensor ID:</strong> ${{sensor.sensor_id}}</p>`;
-                            if (sensor.temperature !== undefined) {{
-                                const tempClass = sensor.temperature > 35 ? 'alert' : '';
-                                html += `<p><strong>Temperatura:</strong> <span class="sensor-value ${{tempClass}}">${{sensor.temperature}}°C</span></p>`;
-                            }}
-                            if (sensor.humidity !== undefined) {{
-                                const humClass = sensor.humidity > 80 ? 'alert' : '';
-                                html += `<p><strong>Humedad:</strong> <span class="sensor-value ${{humClass}}">${{sensor.humidity}}%</span></p>`;
-                            }}
-                            if (sensor.pressure !== undefined) {{
-                                html += `<p><strong>Presión:</strong> <span class="sensor-value">${{sensor.pressure}}hPa</span></p>`;
-                            }}
-                            html += `<p><small>Ubicación: ${{sensor.location || 'Desconocida'}}</small></p>`;
-                            html += `<p><small>${{new Date().toLocaleTimeString()}}</small></p>`;
-                            html += `</div>`;
-                            document.getElementById('sensors').innerHTML = html;
-                        }}
-                        
-                        if (data.type === 'alert') {{
-                            const alerts = data.alerts;
-                            let alertsHTML = '';
-                            alerts.forEach(alert => {{
-                                alertsHTML += `<div class="alert">⚠️ ${{alert.message}}</div>`;
-                            }});
-                            document.getElementById('alerts').innerHTML = alertsHTML;
-                        }}
-                        
-                    }} catch (error) {{
-                        console.error('❌ Error:', error);
-                    }}
-                }};
-                
-                ws.onclose = () => {{
-                    document.getElementById('connectionStatus').innerHTML = '❌ Desconectado - Reconectando...';
-                    document.getElementById('wsStatus').innerHTML = 'Desconectado';
-                    document.getElementById('wsStatus').style.color = '#e74c3c';
-                    setTimeout(connectWebSocket, 3000);
-                }};
-            }}
-            
-            function refreshSemaphores() {{
-                fetch('/api/semaphores/status')
-                    .then(response => response.json())
-                    .then(data => {{
-                        let html = '';
-                        const sensors = data.data.sensors;
-                        const system = data.data.system_semaphores;
-                        
-                        html += '<h3>Sistema:</h3>';
-                        html += `<p>Broadcast: ${{system.broadcast_semaphore}} | DB: ${{system.db_semaphore}} | Alertas: ${{system.alert_semaphore}}</p>`;
-                        html += `<p>Cola de alertas: ${{system.alert_queue_size}} | Total sensores: ${{data.data.total_sensors}}</p>`;
-                        
-                        html += '<h3>Sensores Activos:</h3>';
-                        for (const [sensor_id, stats] of Object.entries(sensors)) {{
-                            html += `<div class="info">`;
-                            html += `<strong>${{sensor_id}}</strong> - Estado: ${{stats.state}}<br>`;
-                            html += `📖 Lectores: ${{stats.readers_count}} | ✍️ Escritores esperando: ${{stats.writers_waiting}}<br>`;
-                            html += `🚦 Semáforo lectura: ${{stats.read_semaphore_value}} | Escritura: ${{stats.write_semaphore_value}}<br>`;
-                            html += `📊 Cola: ${{stats.queue_size}} items`;
-                            html += `</div>`;
-                        }}
-                        
-                        document.getElementById('semaphoreInfo').innerHTML = html;
-                        
-                        // Actualizar badges
-                        document.getElementById('readerCount').innerHTML = `Lectores: ${{Object.values(sensors).reduce((acc, s) => acc + s.readers_count, 0)}}`;
-                        document.getElementById('writerCount').innerHTML = `Escritores: ${{Object.values(sensors).reduce((acc, s) => acc + s.writers_waiting, 0)}}`;
-                    }});
-            }}
-            
-            function testConcurrency() {{
-                fetch('/api/semaphores/test/concurrency', {{ method: 'POST' }})
-                    .then(response => response.json())
-                    .then(data => {{
-                        alert(`🧪 Prueba de concurrencia iniciada: ${{data.readers}} lectores, ${{data.writers}} escritores`);
-                        setTimeout(refreshSemaphores, 2000);
-                    }});
-            }}
-            
-            function refreshData() {{
-                if (ws && ws.readyState === WebSocket.OPEN) {{
-                    ws.send(JSON.stringify({{ type: 'ping' }}));
-                }}
-                refreshSemaphores();
-            }}
-            
-            function clearAlerts() {{
-                document.getElementById('alerts').innerHTML = '<div class="success">✅ Alertas limpiadas</div>';
-            }}
-            
-            // Conectar al iniciar
-            connectWebSocket();
-            
-            // Actualizar semáforos cada 5 segundos
-            setInterval(refreshSemaphores, 5000);
-        </script>
-    </body>
-    </html>
-    """)
-
-@app.get("/api/health")
-async def health_check():
-    """Health check con información de semáforos"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "connections": ws_manager.get_connection_count(),
-        "semaphores": {
-            "active": True,
-            "sensors_monitored": len(sensor_semaphore_manager.sensor_semaphores),
-            "system": sensor_semaphore_manager.get_system_stats()["system_semaphores"]
-        }
+        "temperature": round(random.uniform(15.0, 35.0), 2),
+        "humidity": round(random.uniform(30.0, 90.0), 2),
+        "pressure": round(random.uniform(980.0, 1040.0), 2),
+        "co2": random.randint(350, 1500),
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.get("/api/sensors")
 async def get_sensors():
     """Lista de sensores disponibles"""
-    return {
-        "sensors": [
-            {"id": "sensor_001", "type": "temperature", "location": "Sala Principal"},
-            {"id": "sensor_002", "type": "humidity", "location": "Sala Principal"},
-            {"id": "sensor_003", "type": "pressure", "location": "Exterior"},
-            {"id": "sensor_004", "type": "temperature", "location": "Laboratorio"},
-            {"id": "sensor_005", "type": "humidity", "location": "Oficina"}
-        ]
-    }
+    sensors = []
+    for i in range(1, 8):
+        sensor_type = random.choice(["temperature", "humidity", "pressure", "co2"])
+        locations = ["Sala Principal", "Exterior", "Oficina", "Laboratorio", "Almacén", "Sótano", "Azotea"]
+        
+        sensors.append({
+            "id": f"sensor_{i:03d}",
+            "type": sensor_type,
+            "location": locations[i-1],
+            "status": "active",
+            "last_reading": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {"sensors": sensors}
 
-@app.get("/api/history")
-async def get_history(
-    sensor_id: Optional[str] = None,
+@app.get("/api/history/{sensor_id}")
+async def get_sensor_history(
+    sensor_id: str,
     hours: int = 24,
-    limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """Obtener histórico de datos con control de semáforos"""
+    """Histórico de un sensor específico"""
     try:
-        from datetime import timedelta
+        time_limit = datetime.now(timezone.utc) - timedelta(hours=hours)
         
-        # Adquirir semáforo de lectura del sensor
-        if sensor_id:
-            sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
-            sem.acquire_read(timeout=3)
+        # Adquirir semáforo de lectura
+        sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
+        sem.acquire_read(timeout=3)
         
         try:
-            query = db.query(SensorData)
-            if sensor_id:
-                query = query.filter(SensorData.sensor_id == sensor_id)
-            
-            time_limit = datetime.now(timezone.utc) - timedelta(hours=hours)
-            query = query.filter(SensorData.timestamp >= time_limit)
-            query = query.order_by(SensorData.timestamp.desc())
-            query = query.limit(limit)
+            query = db.query(SensorData).filter(
+                SensorData.sensor_id == sensor_id,
+                SensorData.timestamp >= time_limit
+            ).order_by(SensorData.timestamp.desc()).limit(100)
             
             results = query.all()
             
             return {
+                "sensor_id": sensor_id,
                 "history": [
                     {
-                        "id": data.id,
-                        "sensor_id": data.sensor_id,
-                        "temperature": data.temperature,
-                        "humidity": data.humidity,
-                        "pressure": data.pressure,
-                        "location": data.location,
-                        "timestamp": data.timestamp.isoformat() if data.timestamp else None,
-                        "device_type": data.device_type,
-                        "processing_time": data.processing_time
+                        "timestamp": data.timestamp.isoformat(),
+                        "value": getattr(data, data.device_type) if data.device_type else None,
+                        "type": data.device_type
                     }
                     for data in results
                 ]
             }
         finally:
-            if sensor_id:
-                sem.release_read()
-                
+            sem.release_read()
+            
     except Exception as e:
         logger.error(f"Error obteniendo histórico: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
@@ -472,221 +223,177 @@ async def receive_sensor_data(
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None
 ):
-    """
-    Endpoint para recibir datos del sensor
-    CON SEMÁFOROS para control de concurrencia
-    """
-    start_time = time.time()
+    """Recibir datos de sensor (POST)"""
     sensor_id = data.get("sensor_id")
     
     if not sensor_id:
         raise HTTPException(status_code=400, detail="sensor_id es requerido")
     
-    # Obtener semáforo del sensor
     sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
     
-    # Adquirir permiso de escritura (exclusivo)
+    # Adquirir semáforo de escritura
     acquired = sem.acquire_write(timeout=5)
     if not acquired:
-        logger.warning(f"⚠️ Sensor {sensor_id}: Timeout adquiriendo semáforo de escritura")
-        # Encolar datos para procesamiento posterior
         sem.produce_data(data)
-        return {
-            "status": "queued",
-            "message": "Datos encolados por alta concurrencia",
-            "queue_size": len(sem.data_queue)
-        }
+        return {"status": "queued", "message": "Datos encolados"}
     
     try:
-        logger.info(f"✍️ Escribiendo datos de sensor {sensor_id}")
-        
-        # Guardar en base de datos
         sensor_data = SensorData(
             sensor_id=sensor_id,
             temperature=data.get("temperature"),
             humidity=data.get("humidity"),
             pressure=data.get("pressure"),
             location=data.get("location"),
-            device_type=data.get("device_type"),
-            processing_time=time.time() - start_time,
-            queue_wait_time=data.get("queue_wait_time")
+            device_type=data.get("device_type", "unknown")
         )
         
         db.add(sensor_data)
         db.commit()
-        db.refresh(sensor_data)
         
-        # Verificar alertas
-        alerts = []
-        
-        if data.get("temperature") and data["temperature"] > settings.ALERT_THRESHOLD_TEMP:
-            alert = Alert(
-                sensor_id=sensor_id,
-                alert_type="high_temperature",
-                message=f"⚠️ Temperatura alta: {data['temperature']}°C",
-                severity="high",
-                threshold_value=settings.ALERT_THRESHOLD_TEMP,
-                actual_value=data["temperature"]
+        # Broadcast en tiempo real
+        if background_tasks:
+            background_tasks.add_task(
+                ws_manager.broadcast_sensor_data,
+                {
+                    "sensor_id": sensor_id,
+                    "type": "sensor_update",
+                    "data": data,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
             )
-            db.add(alert)
-            alerts.append(alert)
         
-        if data.get("humidity") and data["humidity"] > settings.ALERT_THRESHOLD_HUMIDITY:
-            alert = Alert(
-                sensor_id=sensor_id,
-                alert_type="high_humidity",
-                message=f"⚠️ Humedad alta: {data['humidity']}%",
-                severity="medium",
-                threshold_value=settings.ALERT_THRESHOLD_HUMIDITY,
-                actual_value=data["humidity"]
-            )
-            db.add(alert)
-            alerts.append(alert)
-        
-        if alerts:
-            db.commit()
-            # Productor: encolar alertas
-            for alert in alerts:
-                sensor_semaphore_manager.produce_alert({
-                    "id": alert.id,
-                    "sensor_id": alert.sensor_id,
-                    "alert_type": alert.alert_type,
-                    "message": alert.message,
-                    "severity": alert.severity,
-                    "timestamp": alert.timestamp.isoformat() if alert.timestamp else None
-                })
-        
-        # Productor: encolar datos para broadcast
-        sem.produce_data({
-            **data,
-            "id": sensor_data.id,
-            "timestamp": sensor_data.timestamp.isoformat() if sensor_data.timestamp else None
-        })
-        
-        # Broadcast asíncrono
-        background_tasks.add_task(
-            ws_manager.broadcast_sensor_data,
-            {
-                **data,
-                "id": sensor_data.id,
-                "timestamp": sensor_data.timestamp.isoformat() if sensor_data.timestamp else None
-            }
-        )
-        
-        return {
-            "status": "success",
-            "message": "Datos recibidos y procesados",
-            "data_id": sensor_data.id,
-            "processing_time_ms": round((time.time() - start_time) * 1000, 2)
-        }
+        return {"status": "success", "data_id": sensor_data.id}
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error procesando datos de sensor {sensor_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
+        logger.error(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Error interno")
     finally:
         sem.release_write()
 
-async def process_alert_queue():
-    """
-    Tarea de background: Consumidor de cola de alertas
-    Procesa alertas usando semáforo productor-consumidor
-    """
-    logger.info("📢 Iniciando procesador de cola de alertas")
-    
-    while True:
-        try:
-            # Consumir alerta de la cola (espera con semáforo)
-            alert_data = sensor_semaphore_manager.consume_alert(timeout=1)
-            
-            if alert_data:
-                logger.info(f"📢 Procesando alerta: {alert_data.get('message')}")
-                
-                # Adquirir semáforo de broadcast para alertas
-                acquired = sensor_semaphore_manager.acquire_broadcast(timeout=2)
-                if acquired:
-                    try:
-                        await ws_manager.broadcast_alerts([alert_data])
-                    finally:
-                        sensor_semaphore_manager.release_broadcast()
-            
-            await asyncio.sleep(0.1)
-            
-        except asyncio.CancelledError:
-            logger.info("Procesador de alertas detenido")
-            break
-        except Exception as e:
-            logger.error(f"Error en procesador de alertas: {e}")
-            await asyncio.sleep(1)
+# ============= TAREAS DE BACKGROUND =============
 
-async def broadcast_sensor_data():
-    """
-    Tarea de background: Simulación de datos de sensores
-    Con control de semáforos
-    """
-    logger.info("📡 Iniciando simulación de datos con SEMÁFOROS...")
+async def generate_alerts():
+    """Generador automático de alertas basado en condiciones"""
+    logger.info("⚠️ Iniciando generador automático de alertas...")
+    
+    alert_types = [
+        {"type": "temperature", "message": "🔥 Temperatura CRÍTICA", "severity": "critical", "threshold": 32},
+        {"type": "temperature", "message": "⚠️ Temperatura alta", "severity": "high", "threshold": 28},
+        {"type": "temperature", "message": "❄️ Temperatura baja", "severity": "medium", "threshold": 18},
+        {"type": "humidity", "message": "💧 Humedad CRÍTICA", "severity": "critical", "threshold": 85},
+        {"type": "humidity", "message": "⚠️ Humedad alta", "severity": "high", "threshold": 75},
+        {"type": "co2", "message": "🏭 CO₂ CRÍTICO", "severity": "critical", "threshold": 1200},
+        {"type": "co2", "message": "⚠️ CO₂ alto", "severity": "high", "threshold": 900},
+        {"type": "pressure", "message": "🌀 Presión anormal", "severity": "low", "threshold": None}
+    ]
     
     while True:
         try:
-            # Generar datos simulados
-            sensor_types = ["temperature", "humidity", "pressure"]
-            sensor_type = random.choice(sensor_types)
+            await asyncio.sleep(random.uniform(8, 15))  # Alertas cada 8-15 segundos
             
-            if sensor_type == "temperature":
-                value = round(random.uniform(15.0, 45.0), 2)
-                unit = "°C"
-            elif sensor_type == "humidity":
-                value = round(random.uniform(30.0, 95.0), 2)
-                unit = "%"
+            # Seleccionar alerta aleatoria
+            alert_info = random.choice(alert_types)
+            
+            # Generar valor según tipo
+            if alert_info["type"] == "temperature":
+                value = random.uniform(29, 38) if "CRÍTICA" in alert_info["message"] else random.uniform(25, 31)
+            elif alert_info["type"] == "humidity":
+                value = random.uniform(76, 92)
+            elif alert_info["type"] == "co2":
+                value = random.randint(950, 1500)
             else:
-                value = round(random.uniform(950.0, 1050.0), 2)
-                unit = "hPa"
+                value = random.uniform(950, 1060)
             
-            sensor_id = f"sensor_{random.randint(1, 5):03d}"
-            location = random.choice(["Sala Principal", "Exterior", "Oficina", "Laboratorio", "Almacén"])
+            sensor_id = f"sensor_{random.randint(1, 7):03d}"
             
-            sensor_data = {
+            alert_data = {
+                "id": random.randint(1000, 9999),
+                "sensor": alert_info["type"].capitalize(),
                 "sensor_id": sensor_id,
-                sensor_type: value,
-                "location": location,
-                "device_type": sensor_type,
-                "unit": unit,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "value": round(value, 2) if isinstance(value, float) else value,
+                "unit": "°C" if alert_info["type"] == "temperature" else 
+                        "%" if alert_info["type"] == "humidity" else
+                        "ppm" if alert_info["type"] == "co2" else "hPa",
+                "message": f"{alert_info['message']}: {round(value, 2) if isinstance(value, float) else value}",
+                "severity": alert_info["severity"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "location": random.choice(["Sala Principal", "Exterior", "Laboratorio", "Oficina"])
             }
             
-            # Enviar datos a través del endpoint interno
-            async with asyncio.timeout(2):
-                db = SessionLocal()
-                try:
-                    # Usar el mismo método que el endpoint
-                    sensor_record = SensorData(
-                        sensor_id=sensor_id,
-                        **{sensor_type: value},
-                        location=location,
-                        device_type=sensor_type
-                    )
-                    
-                    # Adquirir semáforo de DB
-                    db_acquired = sensor_semaphore_manager.acquire_db(timeout=1)
-                    
-                    try:
-                        db.add(sensor_record)
-                        db.commit()
-                        
-                        # Broadcast
-                        await ws_manager.broadcast_sensor_data(sensor_data)
-                        
-                    finally:
-                        if db_acquired:
-                            sensor_semaphore_manager.release_db()
-                            
-                except Exception as e:
-                    logger.error(f"Error en simulación: {e}")
-                    db.rollback()
-                finally:
-                    db.close()
+            # Producir alerta en la cola
+            sensor_semaphore_manager.produce_alert(alert_data)
             
-            await asyncio.sleep(random.uniform(2, 4))
+            # Broadcast inmediato
+            await ws_manager.broadcast_alerts([alert_data])
+            
+            logger.info(f"📢 Alerta generada: {alert_data['message']}")
+            
+        except asyncio.CancelledError:
+            logger.info("Generador de alertas detenido")
+            break
+        except Exception as e:
+            logger.error(f"Error generando alerta: {e}")
+            await asyncio.sleep(5)
+
+async def broadcast_sensor_data():
+    """Broadcast de datos de sensores simulados"""
+    logger.info("📡 Iniciando simulación de datos en tiempo real...")
+    
+    while True:
+        try:
+            # Generar datos para múltiples sensores
+            for i in range(1, 8):  # 7 sensores
+                sensor_id = f"sensor_{i:03d}"
+                sensor_type = random.choice(["temperature", "humidity", "pressure", "co2"])
+                
+                # Valores con tendencia realista
+                if sensor_type == "temperature":
+                    value = round(random.uniform(18.0, 34.0) + random.gauss(0, 1), 2)
+                elif sensor_type == "humidity":
+                    value = round(random.uniform(40.0, 85.0) + random.gauss(0, 2), 2)
+                elif sensor_type == "pressure":
+                    value = round(random.uniform(990.0, 1030.0) + random.gauss(0, 2), 2)
+                else:  # co2
+                    value = random.randint(380, 1300) + int(random.gauss(0, 20))
+                    value = max(350, min(1500, value))
+                
+                location = ["Sala Principal", "Exterior", "Oficina", "Laboratorio", "Almacén", "Sótano", "Azotea"][i-1]
+                
+                sensor_data = {
+                    "sensor_id": sensor_id,
+                    sensor_type: value,
+                    "location": location,
+                    "device_type": sensor_type,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Actualizar semáforo del sensor (simular lecturas concurrentes)
+                sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
+                
+                # Simular lectores/escritores aleatorios
+                if random.random() < 0.3:  # 30% de probabilidad de simular actividad
+                    if sem.acquire_read(timeout=0.1):
+                        await asyncio.sleep(0.05)
+                        sem.release_read()
+                
+                # Producir datos en la cola del sensor
+                sem.produce_data(sensor_data)
+                
+                # Broadcast
+                await ws_manager.broadcast_sensor_data(sensor_data)
+            
+            # También enviar datos combinados para el dashboard principal
+            combined_data = {
+                "temperature": round(random.uniform(18.0, 32.0), 2),
+                "humidity": round(random.uniform(40.0, 80.0), 2),
+                "pressure": round(random.uniform(1000.0, 1030.0), 2),
+                "co2": random.randint(380, 1200),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            await ws_manager.broadcast(combined_data)
+            
+            await asyncio.sleep(2)  # Actualizar cada 2 segundos
             
         except asyncio.CancelledError:
             logger.info("Simulación de datos detenida")
@@ -699,7 +406,7 @@ async def broadcast_sensor_data():
 
 @app.websocket("/ws/sensors")
 async def websocket_sensors(websocket: WebSocket):
-    """WebSocket con soporte de semáforos"""
+    """WebSocket principal para datos en tiempo real"""
     await ws_manager.connect(websocket)
     
     try:
@@ -720,8 +427,6 @@ async def websocket_sensors(websocket: WebSocket):
                     sensor_id = json_data.get("sensor_id")
                     if sensor_id:
                         ws_manager.subscribe_sensor(websocket, sensor_id)
-                        
-                        # Obtener estado del semáforo
                         sem = sensor_semaphore_manager.get_sensor_semaphore(sensor_id)
                         
                         await websocket.send_json({
@@ -732,7 +437,6 @@ async def websocket_sensors(websocket: WebSocket):
                         })
                 
                 elif json_data.get("type") == "get_semaphore_stats":
-                    # Enviar estadísticas de semáforos
                     await websocket.send_json({
                         "type": "semaphore_stats",
                         "data": sensor_semaphore_manager.get_system_stats(),
@@ -740,7 +444,6 @@ async def websocket_sensors(websocket: WebSocket):
                     })
                     
             except json.JSONDecodeError:
-                # Respuesta a ping
                 if data == "ping":
                     await websocket.send_text("pong")
                     
@@ -763,6 +466,7 @@ if __name__ == "__main__":
     logger.info(f"📡 WebSocket: ws://localhost:8000/ws/sensors")
     logger.info(f"🔌 API Docs: http://localhost:8000/docs")
     logger.info(f"🚦 Semáforos: http://localhost:8000/api/semaphores/status")
+    logger.info(f"📁 Frontend: {FRONTEND_DIR}")
     logger.info("=" * 60)
     
     if sys.platform == "win32":
