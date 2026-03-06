@@ -26,6 +26,7 @@ from websocket_manager import ws_manager
 from config import settings
 from models import SensorData, Alert, Base
 from sensor_semaphore import sensor_semaphore_manager
+from exceptions import exception_manager 
 
 # Configuración de logging
 logging.basicConfig(
@@ -451,6 +452,122 @@ async def websocket_sensors(websocket: WebSocket):
         ws_manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"Error en WebSocket: {e}")
+        ws_manager.disconnect(websocket)
+
+@app.get("/exceptions", response_class=HTMLResponse)
+async def get_exceptions_page():
+    """
+    Sirve la página de excepciones
+    """
+    exceptions_path = FRONTEND_DIR / "exceptions.html"
+    
+    if exceptions_path.exists():
+        with open(exceptions_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content)
+    
+    return HTMLResponse("<h1>Error: exceptions.html no encontrado</h1>")
+
+# ============= ENDPOINTS DE EXCEPCIONES =============
+
+@app.get("/api/exceptions")
+async def get_exceptions():
+    """
+    Obtiene todas las excepciones registradas
+    """
+    stats = exception_manager.get_exception_stats()
+    return {
+        "exceptions": exception_manager.exception_history,
+        "stats": stats
+    }
+
+@app.get("/api/exceptions/active")
+async def get_active_exceptions():
+    """
+    Obtiene solo las excepciones activas
+    """
+    return {
+        "active": exception_manager.active_exceptions
+    }
+
+@app.post("/api/exceptions/simulate")
+async def simulate_exception(background_tasks: BackgroundTasks):
+    """
+    Simula una excepción aleatoria para pruebas
+    """
+    exception = exception_manager.simulate_random_exception()
+    
+    if exception:
+        # Broadcast de la nueva excepción
+        background_tasks.add_task(
+            broadcast_exception,
+            exception
+        )
+        
+        return {
+            "status": "success",
+            "message": "Excepción simulada generada",
+            "exception": exception
+        }
+    
+    return {
+        "status": "info",
+        "message": "No se generó ninguna excepción"
+    }
+
+@app.post("/api/exceptions/{exception_id}/resolve")
+async def resolve_exception(exception_id: int):
+    """
+    Marca una excepción como resuelta
+    """
+    success = exception_manager.resolve_exception(exception_id)
+    
+    if success:
+        return {
+            "status": "success",
+            "message": f"Excepción {exception_id} resuelta"
+        }
+    
+    raise HTTPException(status_code=404, detail="Excepción no encontrada")
+
+async def broadcast_exception(exception: Dict):
+    """
+    Broadcast de nueva excepción a clientes WebSocket
+    """
+    await ws_manager.broadcast({
+        "type": "new_exception",
+        "exception": exception,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+# ============= WEBSOCKET DE EXCEPCIONES =============
+
+@app.websocket("/ws/exceptions")
+async def websocket_exceptions(websocket: WebSocket):
+    """
+    WebSocket para excepciones en tiempo real
+    """
+    await ws_manager.connect(websocket)
+    
+    try:
+        # Enviar estado inicial
+        await websocket.send_json({
+            "type": "connection_established",
+            "message": "Conectado al panel de excepciones",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Enviar datos iniciales
+        await websocket.send_json({
+            "type": "exception_update",
+            "exceptions": exception_manager.exception_history,
+            "stats": exception_manager.get_exception_stats()
+        })
+        
+        while True:
+            await websocket.receive_text()
+            
+    except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
 
 # ============= MAIN =============

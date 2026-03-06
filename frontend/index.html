@@ -11,15 +11,82 @@
     
     <!-- CSS local -->
     <link rel="stylesheet" href="/static/style.css">
+    
+    <style>
+        /* Estilo específico para el botón de excepciones - CON ALTA PRIORIDAD */
+        .exceptions-button {
+            background: #ef4444 !important;
+            color: white !important;
+            border: none !important;
+            padding: 12px 24px !important;
+            border-radius: 30px !important;
+            font-weight: bold !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+            text-decoration: none !important;
+            display: inline-block !important;
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            position: relative !important;
+            z-index: 9999 !important;
+            pointer-events: auto !important;
+        }
+        
+        .exceptions-button:hover {
+            background: #dc2626 !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 12px rgba(239, 68, 68, 0.4) !important;
+        }
+        
+        .exceptions-button:active {
+            transform: translateY(0) !important;
+        }
+        
+        /* Asegurar que el contenedor del header no bloquee clics */
+        .header-with-button {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            flex-wrap: wrap;
+            gap: 15px;
+            position: relative;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .header-with-button h1 {
+            pointer-events: none;
+        }
+        
+        .header-with-button a {
+            pointer-events: auto !important;
+            display: inline-block !important;
+            position: relative !important;
+            z-index: 10000 !important;
+        }
+        
+        .header-with-button button {
+            pointer-events: auto !important;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header>
-            <h1>
-                <span>🚦</span> 
-                Sistema de Monitoreo con SEMÁFOROS
-            </h1>
+            <div class="header-with-button">
+                <h1 style="margin: 0;">
+                    <span>🚦</span> 
+                    Sistema de Monitoreo con SEMÁFOROS
+                </h1>
+                
+                <!-- BOTÓN DE EXCEPCIONES - Con estructura simple y directa -->
+                <a href="/exceptions" class="exceptions-button" style="text-decoration: none !important;">
+                    ⚠️ VER EXCEPCIONES
+                </a>
+            </div>
+            
             <p class="subtitle">Control de concurrencia en tiempo real con lectores-escritores y colas sincronizadas</p>
             
             <div class="status-bar">
@@ -225,5 +292,56 @@
     
     <!-- Script principal - JavaScript local -->
     <script src="/static/app.js"></script>
+    
+    <!-- Script de diagnóstico para el botón -->
+    <script>
+        (function() {
+            // Diagnosticar si el botón existe y es clickeable
+            document.addEventListener('DOMContentLoaded', function() {
+                const exceptionsLink = document.querySelector('a[href="/exceptions"]');
+                const exceptionsButton = document.querySelector('.exceptions-button');
+                
+                console.log('🔍 Diagnóstico del botón de excepciones:');
+                console.log('- Link encontrado:', exceptionsLink ? '✅ Sí' : '❌ No');
+                console.log('- Button encontrado:', exceptionsButton ? '✅ Sí' : '❌ No');
+                
+                if (exceptionsLink) {
+                    console.log('- href:', exceptionsLink.getAttribute('href'));
+                    console.log('- clases:', exceptionsLink.className);
+                    
+                    // Forzar que sea clickeable
+                    exceptionsLink.style.pointerEvents = 'auto';
+                    exceptionsLink.style.cursor = 'pointer';
+                    exceptionsLink.style.position = 'relative';
+                    exceptionsLink.style.zIndex = '999999';
+                    
+                    // Agregar evento de clic directo
+                    exceptionsLink.addEventListener('click', function(e) {
+                        console.log('✅ Botón clickeado, navegando a /exceptions');
+                        // Permitir que el navegador maneje la navegación
+                        return true;
+                    });
+                    
+                    // Prevenir que otros eventos capturen el clic
+                    exceptionsLink.addEventListener('mousedown', function(e) {
+                        e.stopPropagation();
+                    }, true);
+                    
+                    exceptionsLink.addEventListener('mouseup', function(e) {
+                        e.stopPropagation();
+                    }, true);
+                }
+            });
+            
+            // También manejar clics en el documento para diagnóstico
+            document.addEventListener('click', function(e) {
+                const target = e.target;
+                if (target.closest && target.closest('a[href="/exceptions"]')) {
+                    console.log('🎯 Clic detectado en botón de excepciones');
+                    // No interferir con la navegación
+                }
+            }, true); // Usar captura para detectar antes
+        })();
+    </script>
 </body>
 </html>

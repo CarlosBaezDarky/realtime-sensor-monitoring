@@ -802,3 +802,324 @@ canvas {
         font-size: 0.8rem;
     }
 }
+
+/* ===== EXCEPCIONES ===== */
+.exceptions-page {
+    background: #0f172a;
+}
+
+.exception-card {
+    background: #1e293b;
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 15px;
+    border-left: 6px solid;
+    transition: all 0.3s ease;
+}
+
+.exception-card.critical {
+    border-left-color: #ef4444;
+    background: linear-gradient(90deg, rgba(239, 68, 68, 0.1), #1e293b);
+}
+
+.exception-card.high {
+    border-left-color: #f59e0b;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.1), #1e293b);
+}
+
+.exception-card.medium {
+    border-left-color: #3b82f6;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), #1e293b);
+}
+
+.exception-card.low {
+    border-left-color: #10b981;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.1), #1e293b);
+}
+
+.exception-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.exception-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.exception-type {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.exception-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.exception-time {
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.exception-message {
+    font-size: 1rem;
+    margin: 15px 0;
+    padding: 15px;
+    background: #0f172a;
+    border-radius: 10px;
+    font-family: monospace;
+    border-left: 3px solid #3b82f6;
+}
+
+.exception-details {
+    background: #0f172a;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.detail-row {
+    display: flex;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 5px;
+}
+
+.detail-label {
+    width: 120px;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.detail-value {
+    flex: 1;
+    color: #e2e8f0;
+}
+
+.traceback {
+    background: #0f172a;
+    border-radius: 10px;
+    padding: 15px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #334155;
+}
+
+.traceback::-webkit-scrollbar {
+    width: 8px;
+}
+
+.traceback::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 4px;
+}
+
+.traceback::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+}
+
+.exception-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #334155;
+}
+
+.resolve-btn {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.resolve-btn:hover {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 10px rgba(16, 185, 129, 0.3);
+}
+
+.exception-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: white;
+    margin-left: 10px;
+}
+
+.badge-critical { 
+    background: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.badge-high { 
+    background: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.badge-medium { 
+    background: #3b82f6;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+.badge-low { 
+    background: #10b981;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.badge-resolved { 
+    background: #64748b;
+}
+
+.simulate-btn {
+    background: linear-gradient(135deg, #7f1d1d, #991b1b);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 30px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin: 20px 0;
+    box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.simulate-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px rgba(239, 68, 68, 0.4);
+}
+
+.simulate-btn:active {
+    transform: translateY(0);
+}
+
+/* Stats específicos para excepciones */
+.stat-card-exception {
+    background: #1e293b;
+    border-radius: 15px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #334155;
+    transition: all 0.3s ease;
+}
+
+.stat-card-exception:hover {
+    transform: translateY(-5px);
+    border-color: #3b82f6;
+}
+
+.stat-value-exception {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.stat-label-exception {
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 30px;
+    transition: all 0.3s ease;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.tab.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.tab:hover:not(.active) {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+/* Notificaciones */
+.exception-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #1e293b;
+    border-left: 4px solid #ef4444;
+    border-radius: 10px;
+    padding: 15px 20px;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+    z-index: 9999;
+    max-width: 350px;
+    border: 1px solid #334155;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.notification-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+.notification-close:hover {
+    color: white;
+}

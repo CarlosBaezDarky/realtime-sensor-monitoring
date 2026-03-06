@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Excepciones - Monitoreo de Sensores</title>
+    
+    <!-- Librerías externas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    
+    <!-- CSS principal y específico -->
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/css/exceptions.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="exceptions-header">
+            <h1>
+                <span>⚠️</span> 
+                Panel de Excepciones del Sistema
+            </h1>
+            <p class="subtitle">Monitoreo en tiempo real de errores y excepciones</p>
+            
+            <div class="status-bar">
+                <div class="status-item">
+                    <div id="statusLed" class="status-led disconnected"></div>
+                    <span id="statusText">Conectando...</span>
+                </div>
+                
+                <div class="status-item">
+                    <span>📊 Excepciones totales:</span>
+                    <span id="totalExceptions">0</span>
+                </div>
+                
+                <div class="status-item">
+                    <span>🔴 Activas:</span>
+                    <span id="activeExceptions">0</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Botón de simulación -->
+        <div style="text-align: center;">
+            <button class="simulate-btn" onclick="ExceptionManager.simulate()">
+                ⚡ SIMULAR EXCEPCIÓN ALEATORIA ⚡
+            </button>
+        </div>
+        
+        <!-- Estadísticas -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="statCritical">0</div>
+                <div class="stat-label">Críticas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-high" id="statHigh">0</div>
+                <div class="stat-label">Altas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-medium" id="statMedium">0</div>
+                <div class="stat-label">Medias</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-low" id="statLow">0</div>
+                <div class="stat-label">Bajas</div>
+            </div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="ExceptionManager.switchTab('active')">Activas</div>
+            <div class="tab" onclick="ExceptionManager.switchTab('history')">Historial</div>
+            <div class="tab" onclick="ExceptionManager.switchTab('stats')">Estadísticas</div>
+        </div>
+        
+        <!-- Contenido de tabs -->
+        <div id="activeTab" class="tab-content">
+            <div id="exceptionsList">
+                <div class="exception-card low">
+                    <div class="exception-header">
+                        <div class="exception-type">
+                            <div class="exception-icon">ℹ️</div>
+                            Sistema iniciado correctamente
+                        </div>
+                        <div class="exception-time">Justo ahora</div>
+                    </div>
+                    <div class="exception-message">
+                        No hay excepciones activas en este momento
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="historyTab" class="tab-content" style="display: none;">
+            <div id="historyList">
+                <!-- Se llenará dinámicamente -->
+            </div>
+        </div>
+        
+        <div id="statsTab" class="tab-content" style="display: none;">
+            <div class="chart-container">
+                <h3>Excepciones por Tipo</h3>
+                <canvas id="exceptionsChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h3>Excepciones por Severidad</h3>
+                <canvas id="severityChart"></canvas>
+            </div>
+            
+            <div class="exception-card">
+                <h4>Contadores por Tipo</h4>
+                <div id="countersList" class="counters-list"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Script principal -->
+    <script src="/static/js/exceptions.js"></script>
+</body>
+</html>
