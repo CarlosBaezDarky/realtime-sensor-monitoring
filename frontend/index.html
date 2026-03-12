@@ -42,6 +42,42 @@
             transform: translateY(0) !important;
         }
         
+        /* Estilo para el botón de recursión */
+        .recursive-button {
+            background: #10b981 !important;
+            color: white !important;
+            border: none !important;
+            padding: 12px 24px !important;
+            border-radius: 30px !important;
+            font-weight: bold !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+            text-decoration: none !important;
+            display: inline-block !important;
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            position: relative !important;
+            z-index: 9999 !important;
+            pointer-events: auto !important;
+        }
+        
+        .recursive-button:hover {
+            background: #059669 !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4) !important;
+        }
+        
+        .recursive-button:active {
+            transform: translateY(0) !important;
+        }
+        
+        /* Contenedor de botones en el header */
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto !important;
+        }
+        
         /* Asegurar que el contenedor del header no bloquee clics */
         .header-with-button {
             display: flex;
@@ -57,6 +93,10 @@
         
         .header-with-button h1 {
             pointer-events: none;
+        }
+        
+        .header-with-button .header-buttons {
+            pointer-events: auto !important;
         }
         
         .header-with-button a {
@@ -81,10 +121,15 @@
                     Sistema de Monitoreo con SEMÁFOROS
                 </h1>
                 
-                <!-- BOTÓN DE EXCEPCIONES - Con estructura simple y directa -->
-                <a href="/exceptions" class="exceptions-button" style="text-decoration: none !important;">
-                    ⚠️ VER EXCEPCIONES
-                </a>
+                <!-- CONTENEDOR DE BOTONES - Excepciones y Recursión -->
+                <div class="header-buttons">
+                    <a href="/exceptions" class="exceptions-button" style="text-decoration: none !important;">
+                        ⚠️ EXCEPCIONES
+                    </a>
+                    <a href="/recursive" class="recursive-button" style="text-decoration: none !important;">
+                        🔄 RECURSIVO
+                    </a>
+                </div>
             </div>
             
             <p class="subtitle">Control de concurrencia en tiempo real con lectores-escritores y colas sincronizadas</p>
@@ -293,54 +338,57 @@
     <!-- Script principal - JavaScript local -->
     <script src="/static/app.js"></script>
     
-    <!-- Script de diagnóstico para el botón -->
+    <!-- Script de diagnóstico para los botones -->
     <script>
         (function() {
-            // Diagnosticar si el botón existe y es clickeable
+            // Diagnosticar si los botones existen y son clickeables
             document.addEventListener('DOMContentLoaded', function() {
                 const exceptionsLink = document.querySelector('a[href="/exceptions"]');
-                const exceptionsButton = document.querySelector('.exceptions-button');
+                const recursiveLink = document.querySelector('a[href="/recursive"]');
                 
-                console.log('🔍 Diagnóstico del botón de excepciones:');
-                console.log('- Link encontrado:', exceptionsLink ? '✅ Sí' : '❌ No');
-                console.log('- Button encontrado:', exceptionsButton ? '✅ Sí' : '❌ No');
+                console.log('🔍 Diagnóstico de botones:');
+                console.log('- Botón Excepciones:', exceptionsLink ? '✅ Sí' : '❌ No');
+                console.log('- Botón Recursivo:', recursiveLink ? '✅ Sí' : '❌ No');
                 
-                if (exceptionsLink) {
-                    console.log('- href:', exceptionsLink.getAttribute('href'));
-                    console.log('- clases:', exceptionsLink.className);
-                    
-                    // Forzar que sea clickeable
-                    exceptionsLink.style.pointerEvents = 'auto';
-                    exceptionsLink.style.cursor = 'pointer';
-                    exceptionsLink.style.position = 'relative';
-                    exceptionsLink.style.zIndex = '999999';
-                    
-                    // Agregar evento de clic directo
-                    exceptionsLink.addEventListener('click', function(e) {
-                        console.log('✅ Botón clickeado, navegando a /exceptions');
-                        // Permitir que el navegador maneje la navegación
-                        return true;
-                    });
-                    
-                    // Prevenir que otros eventos capturen el clic
-                    exceptionsLink.addEventListener('mousedown', function(e) {
-                        e.stopPropagation();
-                    }, true);
-                    
-                    exceptionsLink.addEventListener('mouseup', function(e) {
-                        e.stopPropagation();
-                    }, true);
-                }
+                // Forzar que ambos sean clickeables
+                [exceptionsLink, recursiveLink].forEach(link => {
+                    if (link) {
+                        link.style.pointerEvents = 'auto';
+                        link.style.cursor = 'pointer';
+                        link.style.position = 'relative';
+                        link.style.zIndex = '999999';
+                        
+                        // Agregar evento de clic directo
+                        link.addEventListener('click', function(e) {
+                            console.log(`✅ Botón ${this.href} clickeado`);
+                            return true;
+                        });
+                        
+                        // Prevenir que otros eventos capturen el clic
+                        link.addEventListener('mousedown', function(e) {
+                            e.stopPropagation();
+                        }, true);
+                        
+                        link.addEventListener('mouseup', function(e) {
+                            e.stopPropagation();
+                        }, true);
+                    }
+                });
             });
             
             // También manejar clics en el documento para diagnóstico
             document.addEventListener('click', function(e) {
                 const target = e.target;
-                if (target.closest && target.closest('a[href="/exceptions"]')) {
+                const exceptionsLink = target.closest && target.closest('a[href="/exceptions"]');
+                const recursiveLink = target.closest && target.closest('a[href="/recursive"]');
+                
+                if (exceptionsLink) {
                     console.log('🎯 Clic detectado en botón de excepciones');
-                    // No interferir con la navegación
                 }
-            }, true); // Usar captura para detectar antes
+                if (recursiveLink) {
+                    console.log('🎯 Clic detectado en botón recursivo');
+                }
+            }, true);
         })();
     </script>
 </body>

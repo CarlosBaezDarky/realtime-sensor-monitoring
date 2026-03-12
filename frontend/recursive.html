@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis Recursivo - Monitoreo de Sensores</title>
+    
+    <!-- Librerías externas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    
+    <!-- CSS principal y específico -->
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/css/recursive.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="recursive-header">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1 style="color: white; -webkit-text-fill-color: white;">
+                    <span>🔄</span> 
+                    Análisis Recursivo de Patrones
+                </h1>
+                
+                <a href="/" style="text-decoration: none;">
+                    <button class="chart-btn" style="background: rgba(255,255,255,0.2); color: white;">
+                        ⬅️ Volver al Dashboard
+                    </button>
+                </a>
+            </div>
+            <p class="subtitle" style="color: #d1fae5;">
+                Algoritmos recursivos para detección de picos, tendencias y anomalías
+            </p>
+        </header>
+        
+        <!-- Panel de control -->
+        <div class="control-panel">
+            <button class="control-btn" onclick="RecursiveApp.generateNewData()">
+                🔄 Generar Nuevos Datos
+            </button>
+            <button class="control-btn secondary" onclick="RecursiveApp.runAnalysis()">
+                ⚡ Ejecutar Análisis Recursivo
+            </button>
+            <button class="control-btn secondary" onclick="RecursiveApp.addAnomaly()">
+                🌋 Añadir Anomalía Aleatoria
+            </button>
+        </div>
+        
+        <!-- Dashboard de resultados -->
+        <div class="stats-container">
+            <!-- Columna izquierda: Gráfico y datos -->
+            <div>
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">📈</span>
+                        Datos del Sensor (Temperatura)
+                    </div>
+                    
+                    <canvas id="sensorDataChart" style="height: 250px;"></canvas>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="result-value" id="dataPoints">0</div>
+                            <div class="result-label">Puntos de Datos</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="dataMean">0</div>
+                            <div class="result-label">Media</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="dataRange">0</div>
+                            <div class="result-label">Rango</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Algoritmo 1: Búsqueda de Picos -->
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">⛰️</span>
+                        Algoritmo 1: Búsqueda Recursiva de Picos
+                    </div>
+                    
+                    <div class="code-block">
+                        def find_peaks_recursive(data, index=0, peaks=[]):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if index >= len(data):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return peaks<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if 1 ≤ index ≤ len(data)-2:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if data[index] > data[index-1] and data[index] > data[index+1]:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;peaks.append(index)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;return find_peaks_recursive(data, index + 1, peaks)
+                    </div>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="result-value" id="peaksCount">0</div>
+                            <div class="result-label">Picos Detectados</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="peakValues">0</div>
+                            <div class="result-label">Valor Promedio</div>
+                        </div>
+                    </div>
+                    
+                    <div id="peaksList" class="result-card" style="text-align: left;">
+                        <span style="color: #94a3b8;">Picos en índices: </span>
+                        <span id="peaksIndices">-</span>
+                    </div>
+                </div>
+                
+                <!-- Algoritmo 2: Detección de Tendencias -->
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">📊</span>
+                        Algoritmo 2: Detección Recursiva de Tendencias
+                    </div>
+                    
+                    <div class="code-block">
+                        def detect_trend_recursive(data, start=0, current_trend=[], all_trends=[]):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if start >= len(data):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return all_trends<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if not current_trend:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return detect_trend_recursive(data, start+1, [start], all_trends)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;last = current_trend[-1]<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if data[start] > data[last]:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return detect_trend_recursive(data, start+1, current_trend+[start], all_trends)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;else:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return detect_trend_recursive(data, start, [], all_trends+[current_trend])
+                    </div>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="result-value" id="trendsCount">0</div>
+                            <div class="result-label">Tendencias</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="longestTrend">0</div>
+                            <div class="result-label">Más Larga</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Columna derecha: Anomalías y subarreglo máximo -->
+            <div>
+                <!-- Algoritmo 3: Detección de Anomalías -->
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">🚨</span>
+                        Algoritmo 3: Búsqueda Recursiva de Anomalías
+                    </div>
+                    
+                    <div class="code-block">
+                        def find_anomalies_recursive(data, threshold, index=0):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if index >= len(data): return []<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;anomalies = []<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if index >= 5:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mean = calc_mean_recursive(data, index-5, index)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;std = calc_std_recursive(data, index-5, index, mean)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if abs(data[index] - mean) > threshold * std:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;anomalies.append(index)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;return anomalies + find_anomalies_recursive(data, threshold, index+1)
+                    </div>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="result-value" id="anomaliesCount">0</div>
+                            <div class="result-label">Anomalías</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="anomalyThreshold">2.0σ</div>
+                            <div class="result-label">Umbral</div>
+                        </div>
+                    </div>
+                    
+                    <div id="anomaliesList" class="result-card" style="text-align: left; max-height: 150px; overflow-y: auto;">
+                        <span style="color: #94a3b8;">No hay anomalías detectadas</span>
+                    </div>
+                </div>
+                
+                <!-- Algoritmo 4: Subarreglo Máximo (Divide y Vencerás) -->
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">🧮</span>
+                        Algoritmo 4: Subarreglo Máximo (Divide y Vencerás)
+                    </div>
+                    
+                    <div class="code-block">
+                        def max_subarray_recursive(data, low, high):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;if low == high: return (low, high, data[low])<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;mid = (low + high) // 2<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;left = max_subarray_recursive(data, low, mid)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;right = max_subarray_recursive(data, mid+1, high)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;cross = max_crossing_subarray(data, low, mid, high)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;return max(left, right, cross, key=lambda x: x[2])
+                    </div>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <div class="result-value" id="maxSum">0</div>
+                            <div class="result-label">Suma Máxima</div>
+                        </div>
+                        <div class="result-card">
+                            <div class="result-value" id="maxLength">0</div>
+                            <div class="result-label">Longitud</div>
+                        </div>
+                    </div>
+                    
+                    <div id="maxSubarrayInfo" class="result-card" style="text-align: left;">
+                        <span style="color: #94a3b8;">Rango: </span>
+                        <span id="maxRange">-</span>
+                    </div>
+                </div>
+                
+                <!-- Insights -->
+                <div class="algorithm-card">
+                    <div class="algorithm-title">
+                        <span class="algorithm-icon">💡</span>
+                        Insights del Análisis
+                    </div>
+                    
+                    <div id="insightsList" style="min-height: 100px;">
+                        <div class="insight-badge badge-peak">⛰️ Picos detectados</div>
+                        <div class="insight-badge badge-anomaly">🚨 Anomalías encontradas</div>
+                        <div class="insight-badge badge-trend">📈 Tendencias identificadas</div>
+                        <div style="margin-top: 15px; color: #94a3b8;" id="insightText">
+                            Ejecuta un análisis para ver resultados
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Script principal -->
+    <script src="/static/js/recursive.js"></script>
+</body>
+</html>

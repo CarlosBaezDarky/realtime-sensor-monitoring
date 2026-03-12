@@ -570,6 +570,21 @@ async def websocket_exceptions(websocket: WebSocket):
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
 
+# ============= ENDPOINTS DE RECURSIVIDAD =============
+@app.get("/recursive", response_class=HTMLResponse)
+async def get_recursive_page():
+    """
+    Sirve la página de análisis recursivo
+    """
+    recursive_path = FRONTEND_DIR / "recursive.html"
+    
+    if recursive_path.exists():
+        with open(recursive_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content)
+    
+    return HTMLResponse("<h1>Error: recursive.html no encontrado</h1>")
+
 # ============= MAIN =============
 
 import uvicorn
