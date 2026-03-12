@@ -7,6 +7,8 @@ realtime-sensor-monitoring, Python, Materia INGENIERÍA DE SOFTWARE EN TIEMPO RE
 
 Este módulo extiende el sistema de monitoreo de sensores en tiempo real incorporando **algoritmos recursivos** para el análisis avanzado de patrones en series temporales. Los algoritmos implementados permiten detectar automáticamente picos, tendencias y anomalías en los datos de temperatura, proporcionando insights valiosos para el mantenimiento predictivo y la detección temprana de fallos.
 
+## Enlace Youtube: https://youtu.be/2U2nHCFVs1s
+
 ## Problema Abordado
 
 ### Contexto
